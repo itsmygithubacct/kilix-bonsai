@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import curses
 
+from . import layout
 from . import models
 from . import screen
 from . import widgets
@@ -17,15 +18,11 @@ BOLD = curses.A_BOLD
 DIM = curses.A_DIM
 
 
-def _header(surface, title: str) -> None:
-    _, width = surface.getmaxyx()
-    screen.write(surface, 0, 0, title, BOLD)
-    screen.write(surface, 1, 0, "─" * (width - 1))
-
-
 def render_list(surface, state) -> None:
-    height, width = surface.getmaxyx()
-    _header(surface, "bonsai-cpu chat · conversations")
+    top, bottom, width = layout.shell(
+        surface, breadcrumb="Chats / Saved conversations", active=0,
+        status=state.loading or state.status,
+        footer="Enter open · n new · d delete · Ctrl-Q quit")
     rows = [("[ new conversation ]", "", "")]
     for conversation in state.conversations:
         spec = models.MODELS.get(conversation.model_id, {})
@@ -33,8 +30,7 @@ def render_list(surface, state) -> None:
                      spec.get("title", conversation.model_id),
                      f"{len(conversation.messages) // 2} turns · "
                      f"{conversation.updated[:10]}"))
-    top = 2
-    visible = max(1, height - 3)
+    visible = max(1, bottom - top)
     first = max(0, min(state.selected - visible + 1, len(rows) - visible))
     for row, (name, model, detail) in enumerate(rows[first:first + visible]):
         index = first + row
@@ -45,18 +41,16 @@ def render_list(surface, state) -> None:
         tail = f"{model}  {detail}".strip()
         if tail and width - len(line) - 3 > len(tail):
             screen.write(surface, top + row, width - len(tail) - 1, tail, DIM)
-    screen.write(surface, height - 1, 0,
-                 state.status or
-                 "Enter open · n new · d delete · q quit", DIM)
 
 
 def render_picker(surface, state) -> None:
-    height, width = surface.getmaxyx()
-    _header(surface, "switch model")
+    top, bottom, width = layout.shell(
+        surface, breadcrumb="Models / Switch model", active=2,
+        status=state.loading or state.status,
+        footer="Enter switch · Esc back — switching restarts the server")
     ids = sorted(models.MODELS)
-    top = 2
     for row, model_id in enumerate(ids):
-        if top + row >= height - 1:
+        if top + row >= bottom:
             break
         spec = models.MODELS[model_id]
         marker = "▸ " if row == state.selected else "  "
@@ -67,18 +61,17 @@ def render_picker(surface, state) -> None:
         note = spec.get("speed_note", "")
         if note and width > len(spec["title"]) + len(note) + 14:
             screen.write(surface, top + row, width - len(note) - 1, note, DIM)
-    screen.write(surface, height - 1, 0,
-                 "Enter switch · Esc back — switching restarts the server",
-                 DIM)
 
 
 def render_params(surface, state) -> None:
-    height, width = surface.getmaxyx()
-    _header(surface, "conversation settings")
+    hint = ("Enter commit · Esc cancel" if state.param_editor is not None
+            else "Enter edit · Esc back")
+    top, bottom, width = layout.shell(
+        surface, breadcrumb="Settings / Conversation", active=3,
+        status=state.loading or state.status, footer=hint)
     from .chat_tui import PARAM_FIELDS
-    top = 2
     for row, field in enumerate(PARAM_FIELDS):
-        if top + row >= height - 1:
+        if top + row >= bottom:
             break
         editing = (state.param_editor is not None
                    and row == state.param_index)
@@ -93,9 +86,6 @@ def render_params(surface, state) -> None:
                      BOLD if row == state.param_index else 0)
         screen.write(surface, top + row, len(label),
                      value[: max(0, width - len(label) - 1)])
-    hint = ("Enter commit · Esc cancel" if state.param_editor is not None
-            else "Enter edit · Esc back")
-    screen.write(surface, height - 1, 0, state.status or hint, DIM)
 
 
 HELP_ROWS = (
@@ -113,14 +103,14 @@ HELP_ROWS = (
 
 
 def render_help(surface, state) -> None:
-    height, _ = surface.getmaxyx()
-    _header(surface, "keys")
+    top, bottom, _width = layout.shell(
+        surface, breadcrumb="Help / Keyboard", active=4,
+        status="", footer="any key returns")
     for row, (key, action) in enumerate(HELP_ROWS):
-        if 2 + row >= height - 1:
+        if top + row >= bottom:
             break
-        screen.write(surface, 2 + row, 0, f"{key:>10}", BOLD)
-        screen.write(surface, 2 + row, 12, action)
-    screen.write(surface, height - 1, 0, "any key returns", DIM)
+        screen.write(surface, top + row, 1, f"{key:>10}", BOLD)
+        screen.write(surface, top + row, 13, action)
 
 
 def render_loading(surface, state) -> None:
@@ -133,13 +123,11 @@ def render_loading(surface, state) -> None:
 
 
 def render_error(surface, state) -> None:
-    height, width = surface.getmaxyx()
-    _header(surface, "something broke")
-    row = 2
+    row, bottom, width = layout.shell(
+        surface, breadcrumb="Chat / Server error", active=1,
+        status="", footer="r retry · q quit · any other key back")
     for line in widgets.wrap(state.error, max(1, width - 1)):
-        if row >= height - 1:
+        if row >= bottom:
             break
-        screen.write(surface, row, 0, line)
+        screen.write(surface, row, 1, line)
         row += 1
-    screen.write(surface, height - 1, 0, "r retry · q quit · any key back",
-                 DIM)

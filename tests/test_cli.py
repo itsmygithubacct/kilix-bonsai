@@ -113,6 +113,10 @@ def main():
             check(r.returncode == 2 and "bonsai-cpu build" in r.stderr,
                   f"{argv} without runtime points at build: {r.stderr!r}")
 
+        r = run(["chat", "--graphics", "--text"], base)
+        check(r.returncode == 2 and "not allowed with" in r.stderr,
+              "chat rendering modes are mutually exclusive")
+
         # doctor reports rather than crashes, whatever the machine has.
         r = run(["doctor"], base)
         check(r.returncode in (0, 1) and "doctor" in r.stdout,

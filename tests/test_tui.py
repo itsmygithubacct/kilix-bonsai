@@ -60,6 +60,12 @@ class LoopTest(unittest.TestCase):
         source = inspect.getsource(screen.run)
         self.assertIn('getattr(state, "finished", False)', source)
 
+    def test_window_close_unwinds_through_server_cleanup(self):
+        source = inspect.getsource(chat_tui.main)
+        self.assertIn("signal.SIGHUP", source)
+        self.assertIn("state.finished = True", source)
+        self.assertIn("state.server.stop()", source)
+
 
 class EditorTest(unittest.TestCase):
     def test_typing_editing_submitting(self):
@@ -101,7 +107,7 @@ class WrapScrollTest(unittest.TestCase):
 import curses            # noqa: E402
 import tempfile          # noqa: E402
 
-from bonsai_cpu import chat_tui, convo   # noqa: E402
+from bonsai_cpu import chat_tui, convo, pixel   # noqa: E402
 
 
 class StubServer:
@@ -182,6 +188,64 @@ class ChatRenderTest(unittest.TestCase):
         frame = self.render_all_sizes(state)
         self.assertIn("812/2313", frame)
         self.assertIn("cached 1501", frame)
+
+    def test_the_text_fallback_uses_the_kilix_visual_language(self):
+        state = chat_state(self.tmp.name)
+        frame = self.render_all_sizes(state)
+        self.assertIn("KILIX TUI", frame)
+        self.assertIn("[Conversation]", frame)
+        self.assertNotIn("bonsai-cpu chat ·", frame)
+
+
+class StubCanvas:
+    def __init__(self, width, height):
+        self.width, self.height = width, height
+
+    def fill_rect(self, *args, **kwargs):
+        pass
+
+    def fill_circle(self, *args, **kwargs):
+        pass
+
+    def text(self, *args, **kwargs):
+        pass
+
+    def text_shadow(self, *args, **kwargs):
+        pass
+
+    def rgb_bytes(self):
+        return b"\0" * (self.width * self.height * 3)
+
+    def close(self):
+        pass
+
+
+@unittest.skipUnless(pixel.shared(),
+                     "kilix-tui-utils is not alongside this checkout")
+class PixelRenderTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+
+    def test_every_view_renders_in_the_shared_pixel_frame(self):
+        state = chat_state(self.tmp.name)
+        state.conversations = [state.convo]
+        renderer = pixel.ChatRenderer(canvas_factory=StubCanvas)
+        for view in ("chat", "list", "picker", "params", "help"):
+            state.view = view
+            frame = renderer.render(state, 100, 30, (960, 560),
+                                    clock="12:00")
+            self.assertEqual(len(frame.rgb), 960 * 560 * 3, view)
+            self.assertGreaterEqual(len(renderer.hits), 5, view)
+
+    def test_error_and_loading_are_complete_pixel_frames(self):
+        state = chat_state(self.tmp.name)
+        renderer = pixel.ChatRenderer(canvas_factory=StubCanvas)
+        state.loading = "starting Bonsai 8B"
+        renderer.render(state, 100, 30, (960, 560), clock="12:00")
+        state.loading = ""
+        state.error = "server exited"
+        renderer.render(state, 100, 30, (960, 560), clock="12:00")
 
 
 class ChatKeysTest(unittest.TestCase):

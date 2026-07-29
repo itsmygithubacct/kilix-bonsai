@@ -14,11 +14,14 @@ from __future__ import annotations
 
 import curses
 import os
+import signal
 import threading
 
 from . import convo as convo_mod
+from . import layout
 from . import models
 from . import overlays
+from . import pixel
 from . import richtext
 from . import screen
 from . import server as server_mod
@@ -262,18 +265,23 @@ def status_line(state: State) -> str:
 
 
 def render_chat(surface, state: State) -> None:
-    height, width = surface.getmaxyx()
     spec = state.spec()
     think = ""
     if spec.get("thinking"):
         think = " · think " + ("ON" if state.convo.think else "off")
     name = state.convo.name or "new conversation"
-    screen.write(surface, 0, 0, f"bonsai-cpu chat · {spec['title']}{think}",
-                 BOLD)
-    screen.write(surface, 0, min(width - 1, width - len(name) - 1), name, DIM)
-    screen.write(surface, 1, 0, "─" * (width - 1))
-
-    pane_top, pane_bottom = 2, height - 4
+    if state.loading:
+        footer = state.loading
+    elif state.streaming:
+        footer = "generating… Esc stops · Ctrl-Q quit"
+    else:
+        footer = ("Enter send · ^O model · ^T think · ^P settings · "
+                  "^F fold · ? help")
+    status = state.status or status_line(state)
+    pane_top, pane_bottom, width = layout.shell(
+        surface, breadcrumb=f"Conversation / {spec['title']}{think} / {name}",
+        active=1, status=status, footer=footer)
+    pane_bottom -= 1
     pane_height = max(1, pane_bottom - pane_top + 1)
     lines = transcript_lines(state, max(1, width - 1))
     first = state.scroll.clamp(len(lines), pane_height)
@@ -283,25 +291,17 @@ def render_chat(surface, state: State) -> None:
             screen.write(surface, pane_top + row, x, text, attr)
             x += len(text)
 
-    screen.write(surface, height - 3, 0, status_line(state), DIM)
     if state.renaming is not None:
-        screen.write(surface, height - 2, 0,
+        screen.write(surface, pane_bottom, 1,
                      "name: " + state.renaming.view(width - 8)[0])
     else:
         visible, cursor = state.editor.view(max(1, width - 3))
-        screen.write(surface, height - 2, 0, "> " + visible)
+        screen.write(surface, pane_bottom, 1, "> " + visible)
         if cursor < len(visible):
-            screen.write(surface, height - 2, 2 + cursor, visible[cursor],
+            screen.write(surface, pane_bottom, 3 + cursor, visible[cursor],
                          REVERSE)
         else:
-            screen.write(surface, height - 2, 2 + cursor, " ", REVERSE)
-    if state.loading:
-        hint = state.loading
-    elif state.streaming:
-        hint = "generating… Esc stops"
-    else:
-        hint = "Enter send · ^O model · ^T think · ^P params · ^F fold · ? help"
-    screen.write(surface, height - 1, 0, state.status or hint, DIM)
+            screen.write(surface, pane_bottom, 3 + cursor, " ", REVERSE)
 
 
 def render(surface, state: State) -> None:
@@ -528,16 +528,32 @@ def handle(key: int, state: State) -> bool:
 
 
 def main(model_id: str = "bonsai-8b", think: bool = False,
-         threads: int | None = None, ctx: int | None = None) -> int:
+         threads: int | None = None, ctx: int | None = None,
+         graphics: bool | None = None) -> int:
     state = State(model_id, think=think, threads=threads, ctx=ctx)
     state.refresh_listing()
     if not state.conversations:
         # An empty store means the list screen would be one row; go straight
         # to a new conversation, which is why the person is here.
         new_conversation(state)
+    previous_signals = {}
+
+    def close_session(_signal, _frame) -> None:
+        # Closing a Kilix window sends SIGHUP/SIGTERM.  Let the UI loop
+        # unwind so its resident llama-server is stopped in the normal
+        # finally block instead of becoming an orphan.
+        state.finished = True
+
+    for signum in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
+        previous_signals[signum] = signal.getsignal(signum)
+        signal.signal(signum, close_session)
     try:
-        return screen.run(render, state, handle=handle, tick_ms=TICK_MS)
+        status = pixel.run(state, handle, mode=graphics, tick_ms=TICK_MS)
+        return (screen.run(render, state, handle=handle, tick_ms=TICK_MS)
+                if status is None else status)
     finally:
+        for signum, previous in previous_signals.items():
+            signal.signal(signum, previous)
         state.closing = True
         if state.streaming:
             stop_generation(state)

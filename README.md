@@ -70,7 +70,8 @@ is the answer to a missing model, and every refusal here says so.
 
 ```sh
 bonsai-cpu run [-n N] [--greedy] PROMPT   # answer once and exit
-bonsai-cpu chat [--think] [--plain]       # the chat interface (below)
+bonsai-cpu chat [--think] [--graphics|--text|--plain]
+                                           # the chat interface (below)
 bonsai-cpu serve [--port 8188]            # OpenAI-compatible llama-server
 bonsai-cpu bench [-- FLAGS]               # llama-bench; its flags after --
                                           #   e.g. bench -- -p 512 -n 128
@@ -98,6 +99,14 @@ reports what the server measured, not what the UI hoped: tok/s, context
 used, and during long prompts a `processing prompt… 812/2313 (cached
 1501)` account of where the wait is going.
 
+In a Kilix/Kitty window the chat uses the same Tango pixel language as
+`kilix-tui`: blue sidebar navigation, one quiet content card, large raster
+type, and red reserved for errors. That treatment covers conversations,
+models, settings, help, loading and the live transcript rather than stopping
+at a launcher. `--text` selects the compact fallback; `--graphics` requires
+the pixel path and reports why it cannot start. The pixel path finds
+`kilix-tui-utils` alongside the checkout or through `KILIX_TUI_UTILS_HOME`.
+
 Conversations are saved as they happen and listed on start; opening one
 brings its model up with the load narrated on screen. Each conversation
 carries its own system prompt and sampling (Ctrl-P), name (Ctrl-R), and —
@@ -120,8 +129,7 @@ line; Ctrl-F unfolds it.
 Chats live under `~/.local/gpu_terminal/bonsai-cpu/chats/` (override
 `BONSAI_CPU_CHATS_DIR`), one JSON each, atomically written. The input is a
 single line — a pasted multi-line prompt flattens. `--plain` gives the
-runtime's own CLI chat instead, for terminals where curses is the wrong
-answer.
+runtime's own CLI chat instead of either Kilix interface.
 
 ## The runtime pin
 

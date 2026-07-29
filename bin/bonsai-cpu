@@ -115,8 +115,10 @@ def cmd_chat(args):
     # instead of inside a curses frame.
     binary("llama-server")
     from bonsai_cpu import chat_tui
+    graphics = True if args.graphics else False if args.text else None
     sys.exit(chat_tui.main(model_id=args.model_id, think=args.think,
-                           threads=args.threads, ctx=args.ctx))
+                           threads=args.threads, ctx=args.ctx,
+                           graphics=graphics))
 
 
 def cmd_serve(args):
@@ -224,8 +226,16 @@ def main():
     p = add("chat", cmd_chat, "streaming chat with saved conversations")
     p.add_argument("--think", action="store_true",
                    help="let a thinking model reason before answering")
-    p.add_argument("--plain", action="store_true",
-                   help="the runtime's own CLI chat instead of the TUI")
+    display = p.add_mutually_exclusive_group()
+    display.add_argument(
+        "--plain", action="store_true",
+        help="the runtime's own CLI chat instead of the TUI")
+    display.add_argument(
+        "--graphics", action="store_true",
+        help="require the Kilix pixel interface")
+    display.add_argument(
+        "--text", action="store_true",
+        help="require the portable text interface")
 
     p = add("serve", cmd_serve, "OpenAI-compatible server (llama-server)")
     p.add_argument("--host", default="127.0.0.1")
