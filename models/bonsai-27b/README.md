@@ -33,9 +33,12 @@ without multimodal support cannot use it at all.
 
 ## Running it
 
-> **Stock llama.cpp cannot load this.** `Q1_0` is not a ggml tensor
-> type, so a stock `llama-server` aborts while reading tensor info. It needs
-> the vendor's own llama.cpp fork.
+> **This does not run under llama.cpp.** `Q1_0` is not a ggml tensor type, so
+> a stock `llama-server` aborts while reading tensor info. These checkpoints
+> are run by a deterministic integer engine that first *imports* the GGUF into
+> a safetensors artifact and then executes it with its own kernel — a
+> published, open project. A vendor CUDA runtime is an optional accelerator,
+> not a requirement; the CPU path is the canonical one.
 
 It loads on CPU. A CUDA runtime is much faster, but 27B at 1-bit plus a KV
 cache does not comfortably share an 8 GiB card with a second float process —
