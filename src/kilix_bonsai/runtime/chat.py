@@ -39,6 +39,7 @@ SAMPLING = {"temperature": 0.7, "top_p": 0.95, "top_k": 20, "min_p": 0.0}
 
 LOCAL = "local"
 REMOTE = "remote"
+CPU = "cpu"
 
 # The remote is named after a machine, which is configuration rather than
 # something a published repository should carry.
@@ -102,6 +103,17 @@ def free_vram_mib(backend: str = LOCAL, timeout: float = 30.0) -> int | None:
         return None
 
 
+def cpu_runtime() -> str | None:
+    """Return the CPU runner, or None when it is not installed.
+
+    Upstream llama.cpp learned `Q1_0` in April 2026, so a CPU path exists that
+    needs no vendor build and no card at all. It is slower by an order of
+    magnitude — around 8 t/s for 8B against 131 on a GPU — but "slow" beats
+    "no chat on this machine", which was the previous answer.
+    """
+    return shutil.which("bonsai-cpu")
+
+
 def needs_mib(model_id: str) -> int:
     return (VRAM_27B_MIB if model_id == "bonsai-27b" else VRAM_8B_MIB) \
         + HEADROOM_MIB
@@ -158,9 +170,18 @@ def choose(preferred: str | None = None,
         if fits("bonsai-8b", free):
             return Choice("bonsai-8b", backend, free,
                           f"{free} MiB free on the {backend} GPU", True)
+    # No usable card anywhere: fall back to CPU rather than refusing. 27B is
+    # not offered here — at CPU speeds a 27B turn is minutes, and silently
+    # committing someone to that is worse than saying 8B.
+    if cpu_runtime() is not None:
+        note = "no GPU available — running on CPU"
+        if preferred == "bonsai-27b":
+            note = ("no GPU available, and 27B on CPU is impractically slow "
+                    "— running 8B on CPU")
+        return Choice("bonsai-8b", CPU, None, note, True)
     return Choice(preferred or "bonsai-8b", LOCAL, None,
-                  "no GPU with enough free memory was found; the vendor "
-                  "runtime is CUDA-only and has no CPU path", False)
+                  "no GPU with enough free memory was found, and bonsai-cpu "
+                  "is not installed for the CPU fallback", False)
 
 
 @dataclass
@@ -177,6 +198,14 @@ class Session:
     process: subprocess.Popen | None = None
 
     def argv(self, prompt: str, tokens: int = 256) -> list[str]:
+        if self.choice.backend == CPU:
+            runner = cpu_runtime()
+            if runner is None:
+                raise ChatError("bonsai-cpu is not installed")
+            # It resolves the weights from the same store this repository
+            # writes to, so the model is named rather than pathed.
+            return [runner, "run", "--model-id", self.choice.model_id,
+                    "--ctx", str(self.context), "-n", str(tokens), prompt]
         # A remote launcher must be resolved on the machine that will run it.
         # Probing this filesystem for it would fail on exactly the hosts that
         # need the remote — the ones with no usable GPU and no runtime.

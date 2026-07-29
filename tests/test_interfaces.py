@@ -366,3 +366,51 @@ class ChromeAdoptionTest(unittest.TestCase):
                 self.assertTrue(text.strip(), f"{name} drew nothing")
         finally:
             chrome._CORE = saved
+
+
+class CpuFallbackTest(unittest.TestCase):
+    """No card is a reason to be slow, not a reason to refuse."""
+
+    def _forced(self, cpu_present: bool, free):
+        from kilix_bonsai.runtime import chat
+        saved_vram, saved_cpu = chat.free_vram_mib, chat.cpu_runtime
+        chat.free_vram_mib = lambda backend=chat.LOCAL, timeout=30.0: free
+        chat.cpu_runtime = lambda: "/usr/bin/bonsai-cpu" if cpu_present else None
+        try:
+            return chat.choose("bonsai-8b"), chat.choose("bonsai-27b")
+        finally:
+            chat.free_vram_mib, chat.cpu_runtime = saved_vram, saved_cpu
+
+    def test_no_gpu_falls_back_to_cpu(self) -> None:
+        from kilix_bonsai.runtime import chat
+        eight, _ = self._forced(cpu_present=True, free=None)
+        self.assertTrue(eight.usable)
+        self.assertEqual(eight.backend, chat.CPU)
+
+    def test_a_gpu_is_still_preferred_when_one_fits(self) -> None:
+        from kilix_bonsai.runtime import chat
+        eight, _ = self._forced(cpu_present=True, free=8000)
+        self.assertNotEqual(eight.backend, chat.CPU)
+
+    def test_27b_is_not_offered_on_cpu(self) -> None:
+        # A 27B turn at CPU speeds is minutes; committing someone to that
+        # silently is worse than answering with 8B and saying so.
+        _, twenty_seven = self._forced(cpu_present=True, free=None)
+        self.assertEqual(twenty_seven.model_id, "bonsai-8b")
+        self.assertIn("slow", twenty_seven.reason)
+
+    def test_without_the_cpu_runner_it_refuses_and_names_it(self) -> None:
+        eight, _ = self._forced(cpu_present=False, free=None)
+        self.assertFalse(eight.usable)
+        self.assertIn("bonsai-cpu", eight.reason)
+
+    def test_the_cpu_command_names_the_model_not_a_path(self) -> None:
+        from kilix_bonsai.runtime import chat
+        choice = chat.Choice("bonsai-8b", chat.CPU, None, "", True)
+        saved = chat.cpu_runtime
+        chat.cpu_runtime = lambda: "/usr/bin/bonsai-cpu"
+        try:
+            argv = chat.Session(choice).argv("hi", 8)
+        finally:
+            chat.cpu_runtime = saved
+        self.assertEqual(argv[1:4], ["run", "--model-id", "bonsai-8b"])

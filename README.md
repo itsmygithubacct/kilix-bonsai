@@ -135,6 +135,14 @@ reading about them:
   well after a long model load — so the backend is chosen from what `doctor`
   reports, and a remote is a first-class option rather than a fallback.
 
+Chat picks in that order too: a local card, then a remote one, then **CPU**.
+Upstream llama.cpp learned `Q1_0` in April 2026, so a card is no longer
+required at all — it is about twenty times slower (roughly 5 t/s against 131
+for 8B) but "slow" beats "not on this machine", which was the previous answer.
+27B is deliberately not offered on CPU: a turn would take minutes, and
+committing someone to that silently is worse than answering with 8B and
+saying why.
+
 `kilix` reaches the same surface: `kilix bonsai`, `kilix bonsai list`,
 `kilix bonsai pull …`, and so on. It is also in the Kilix 95 Start menu under
 Programs ▸ **BitNet Models**.
