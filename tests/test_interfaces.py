@@ -392,12 +392,19 @@ class CpuFallbackTest(unittest.TestCase):
         eight, _ = self._forced(cpu_present=True, free=8000)
         self.assertNotEqual(eight.backend, chat.CPU)
 
-    def test_27b_is_not_offered_on_cpu(self) -> None:
-        # A 27B turn at CPU speeds is minutes; committing someone to that
-        # silently is worse than answering with 8B and saying so.
+    def test_27b_on_cpu_is_warned_not_withheld(self) -> None:
+        # Slow is not broken. Whether minutes per turn is acceptable is the
+        # caller's call, so it is offered with the cost stated.
+        from kilix_bonsai.runtime import chat
         _, twenty_seven = self._forced(cpu_present=True, free=None)
-        self.assertEqual(twenty_seven.model_id, "bonsai-8b")
-        self.assertIn("slow", twenty_seven.reason)
+        self.assertEqual(twenty_seven.model_id, "bonsai-27b")
+        self.assertEqual(twenty_seven.backend, chat.CPU)
+        self.assertTrue(twenty_seven.usable)
+        self.assertIn("minutes", twenty_seven.reason)
+
+    def test_8b_stays_the_cpu_default_when_nothing_is_asked_for(self) -> None:
+        eight, _ = self._forced(cpu_present=True, free=None)
+        self.assertEqual(eight.model_id, "bonsai-8b")
 
     def test_without_the_cpu_runner_it_refuses_and_names_it(self) -> None:
         eight, _ = self._forced(cpu_present=False, free=None)

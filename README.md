@@ -139,9 +139,10 @@ Chat picks in that order too: a local card, then a remote one, then **CPU**.
 Upstream llama.cpp learned `Q1_0` in April 2026, so a card is no longer
 required at all — it is about twenty times slower (roughly 5 t/s against 131
 for 8B) but "slow" beats "not on this machine", which was the previous answer.
-27B is deliberately not offered on CPU: a turn would take minutes, and
-committing someone to that silently is worse than answering with 8B and
-saying why.
+8B stays the default on CPU, but 27B is available there too — measured at 1.5
+t/s generation, so a full answer really is minutes. It is warned rather than
+withheld: slow is not broken, and whether that trade is worth making is the
+caller's judgement, not this tool's.
 
 `kilix` reaches the same surface: `kilix bonsai`, `kilix bonsai list`,
 `kilix bonsai pull …`, and so on. It is also in the Kilix 95 Start menu under

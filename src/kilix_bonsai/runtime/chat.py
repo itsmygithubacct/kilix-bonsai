@@ -171,14 +171,16 @@ def choose(preferred: str | None = None,
             return Choice("bonsai-8b", backend, free,
                           f"{free} MiB free on the {backend} GPU", True)
     # No usable card anywhere: fall back to CPU rather than refusing. 27B is
-    # not offered here — at CPU speeds a 27B turn is minutes, and silently
-    # committing someone to that is worse than saying 8B.
+    # allowed here, warned rather than withheld — it is slow, not broken, and
+    # whether minutes-per-turn is acceptable is the caller's judgement to make.
+    # 8B remains the default; only an explicit request gets 27B.
     if cpu_runtime() is not None:
-        note = "no GPU available — running on CPU"
         if preferred == "bonsai-27b":
-            note = ("no GPU available, and 27B on CPU is impractically slow "
-                    "— running 8B on CPU")
-        return Choice("bonsai-8b", CPU, None, note, True)
+            return Choice("bonsai-27b", CPU, None,
+                          "no GPU — 27B on CPU, expect minutes per response",
+                          True)
+        return Choice("bonsai-8b", CPU, None,
+                      "no GPU available — running on CPU", True)
     return Choice(preferred or "bonsai-8b", LOCAL, None,
                   "no GPU with enough free memory was found, and bonsai-cpu "
                   "is not installed for the CPU fallback", False)
