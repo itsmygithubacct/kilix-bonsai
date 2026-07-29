@@ -46,6 +46,7 @@ class State:
         self.started = 0.0
         self.tokens = 0
         self.finished = False
+        self.delegate: list[str] | None = None
         self.choice: chat.Choice | None = None
         self.session: chat.Session | None = None
 
@@ -64,6 +65,18 @@ class State:
                 self.choice = choice
                 self.error = choice.reason
                 self.status = "unavailable"
+                return
+            if choice.backend == chat.CPU:
+                try:
+                    self.delegate = chat.delegate_argv(choice)
+                except chat.ChatError as error:
+                    self.choice = choice
+                    self.error = str(error)
+                    self.status = "unavailable"
+                    return
+                self.choice = choice
+                self.status = f"opening bonsai-cpu · {choice.reason}"
+                self.finished = True
                 return
             if choice.model_id != self.model.id:
                 self.model = catalog.find(choice.model_id)
@@ -272,9 +285,18 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     state.boot()
     try:
-        return screen.run(render, state, handle=handle, tick_ms=100)
+        status = screen.run(render, state, handle=handle, tick_ms=100)
     finally:
         state.shutdown()
+    if (state.delegate is not None
+            and os.environ.get("KILIX_TUI_HEADLESS") != "1"):
+        try:
+            os.execvp(state.delegate[0], state.delegate)
+        except OSError as error:
+            print(f"kilix-bonsai-chat: cannot open bonsai-cpu: {error}",
+                  file=sys.stderr)
+            return 1
+    return status
 
 
 if __name__ == "__main__":

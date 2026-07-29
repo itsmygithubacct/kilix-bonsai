@@ -193,6 +193,19 @@ def choose(preferred: str | None = None,
                   "is not installed for the CPU fallback", False)
 
 
+def delegate_argv(choice: Choice) -> list[str]:
+    """Open the flagship CPU chat instead of duplicating it here.
+
+    bonsai-cpu owns a resident llama-server, conversation persistence, model
+    switching and thinking controls. Running its one-shot command per turn in
+    this smaller GPU-oriented TUI would be duplication with a worse answer.
+    """
+    runner = cpu_runtime()
+    if runner is None:
+        raise ChatError("bonsai-cpu is not installed")
+    return [runner, "chat", "--model-id", choice.model_id]
+
+
 @dataclass
 class Session:
     """One vendor-launcher process, held only while a session is open.
@@ -208,13 +221,8 @@ class Session:
 
     def argv(self, prompt: str, tokens: int = 256) -> list[str]:
         if self.choice.backend == CPU:
-            runner = cpu_runtime()
-            if runner is None:
-                raise ChatError("bonsai-cpu is not installed")
-            # It resolves the weights from the same store this repository
-            # writes to, so the model is named rather than pathed.
-            return [runner, "run", "--model-id", self.choice.model_id,
-                    "--ctx", str(self.context), "-n", str(tokens), prompt]
+            raise ChatError(
+                "CPU chat is delegated to bonsai-cpu; use delegate_argv()")
         # A remote launcher must be resolved on the machine that will run it.
         # Probing this filesystem for it would fail on exactly the hosts that
         # need the remote — the ones with no usable GPU and no runtime.

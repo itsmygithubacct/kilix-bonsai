@@ -250,6 +250,36 @@ class RuntimeProbeTest(unittest.TestCase):
         frame = screen.render_to_text(module.render, state)
         self.assertIn("measuring free VRAM", frame)
 
+    def test_a_cpu_probe_finishes_with_a_delegate(self) -> None:
+        module = load_tool("kilix-bonsai-chat")
+        choice = module.chat.Choice(
+            "bonsai-8b", module.chat.CPU, None, "CPU", True)
+
+        class InlineThread:
+            def __init__(self, *, target, daemon):
+                self.target = target
+                self.daemon = daemon
+
+            def start(self):
+                self.target()
+
+        saved_choose = module.chat.choose
+        saved_delegate = module.chat.delegate_argv
+        saved_thread = module.threading.Thread
+        module.chat.choose = lambda model_id: choice
+        module.chat.delegate_argv = lambda selected: ["/bin/bonsai-cpu"]
+        module.threading.Thread = InlineThread
+        try:
+            state = module.State(catalog.find("bonsai-8b"))
+            state.boot()
+        finally:
+            module.chat.choose = saved_choose
+            module.chat.delegate_argv = saved_delegate
+            module.threading.Thread = saved_thread
+        self.assertTrue(state.finished)
+        self.assertEqual(state.delegate, ["/bin/bonsai-cpu"])
+        self.assertIsNone(state.session)
+
     def test_the_loop_can_be_finished_by_a_thread(self) -> None:
         import inspect
         self.assertIn('getattr(state, "finished", False)',
@@ -444,13 +474,15 @@ class CpuFallbackTest(unittest.TestCase):
         self.assertFalse(eight.usable)
         self.assertIn("bonsai-cpu", eight.reason)
 
-    def test_the_cpu_command_names_the_model_not_a_path(self) -> None:
+    def test_cpu_delegates_to_the_flagship_tui(self) -> None:
         from kilix_bonsai.runtime import chat
-        choice = chat.Choice("bonsai-8b", chat.CPU, None, "", True)
+        choice = chat.Choice("bonsai-27b", chat.CPU, None, "", True)
         saved = chat.cpu_runtime
         chat.cpu_runtime = lambda: "/usr/bin/bonsai-cpu"
         try:
-            argv = chat.Session(choice).argv("hi", 8)
+            argv = chat.delegate_argv(choice)
         finally:
             chat.cpu_runtime = saved
-        self.assertEqual(argv[1:4], ["run", "--model-id", "bonsai-8b"])
+        self.assertEqual(
+            argv,
+            ["/usr/bin/bonsai-cpu", "chat", "--model-id", "bonsai-27b"])
