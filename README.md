@@ -70,7 +70,7 @@ is the answer to a missing model, and every refusal here says so.
 
 ```sh
 bonsai-cpu run [-n N] [--greedy] PROMPT   # answer once and exit
-bonsai-cpu chat                           # interactive, model's own template
+bonsai-cpu chat [--think] [--plain]       # the chat interface (below)
 bonsai-cpu serve [--port 8188]            # OpenAI-compatible llama-server
 bonsai-cpu bench [-- FLAGS]               # llama-bench; its flags after --
                                           #   e.g. bench -- -p 512 -n 128
@@ -85,6 +85,43 @@ Sampling defaults are Qwen3's recommended (temp 0.6, top-p 0.95, top-k 20);
 `--single-turn` mode deliberately: the interactive UI treats a prompt as
 turn one of a conversation and waits for a second, which is wrong for
 scripts.
+
+## The chat interface
+
+`bonsai-cpu chat` owns a `llama-server` for as long as a conversation is
+open. That is what makes it worth using over a CLI: tokens render as they
+are produced, the KV cache survives between turns so the second question
+does not pay for the first, cancelling a generation closes the connection
+rather than waiting out a token — at the 27B's one token per second, that
+is the difference between instant and eventually — and the status line
+reports what the server measured, not what the UI hoped: tok/s, context
+used, and during long prompts a `processing prompt… 812/2313 (cached
+1501)` account of where the wait is going.
+
+Conversations are saved as they happen and listed on start; opening one
+brings its model up with the load narrated on screen. Each conversation
+carries its own system prompt and sampling (Ctrl-P), name (Ctrl-R), and —
+for the 27B — whether the model reasons before answering (Ctrl-T,
+per-request, no server restart). The reasoning streams folded to one dim
+line; Ctrl-F unfolds it.
+
+| Key | Does |
+|---|---|
+| Enter | send |
+| Esc | stop generating, or back to the list |
+| Ctrl-O | switch model (server swap, narrated) |
+| Ctrl-T | toggle thinking (27B) |
+| Ctrl-F | fold / reveal the reasoning |
+| Ctrl-P | system prompt and sampling |
+| Ctrl-N / Ctrl-R | new / rename conversation |
+| PgUp / PgDn | scroll the transcript |
+| Ctrl-Q | quit |
+
+Chats live under `~/.local/gpu_terminal/bonsai-cpu/chats/` (override
+`BONSAI_CPU_CHATS_DIR`), one JSON each, atomically written. The input is a
+single line — a pasted multi-line prompt flattens. `--plain` gives the
+runtime's own CLI chat instead, for terminals where curses is the wrong
+answer.
 
 ## The runtime pin
 
