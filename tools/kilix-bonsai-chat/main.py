@@ -1,13 +1,14 @@
-"""kilix-bonsai-chat — talk to a local 1-bit model.
+"""kilix-bonsai-chat — route a chat model to the backend that can run it.
 
-The generation runs on a worker thread and the UI keeps redrawing while tokens
-arrive, which is the whole reason this is worth using over `llama-cli`: the
-answer appears as it is written, Esc abandons it mid-sentence, and the model
-stays loaded between turns.
+On a GPU, generation runs in a worker thread and the UI redraws while one
+vendor process streams the turn; Esc abandons it and the process releases the
+card. On CPU, the probe ends this smaller interface and hands the terminal to
+``bonsai-cpu chat``, whose resident server and persistent conversations are the
+flagship experience.
 
-Everything the model server needs is derived from the model's own MODEL.json —
-which file to load, how much context, what system prompt to start with — so a
-new chat model is a new folder, not a change here.
+MODEL.json declares which interface and engine a model needs. An engine still
+needs an adapter here: unsupported BitNet checkpoints are refused by name
+rather than replaced with a different model.
 """
 from __future__ import annotations
 

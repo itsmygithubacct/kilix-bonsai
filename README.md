@@ -19,7 +19,7 @@ then "open a model" is what you came to do.
 | Command | For | What it does |
 |---|---|---|
 | `kilix-bonsai` | all of them | The launcher and the model store |
-| `kilix-bonsai-chat` | the 1-bit text models | Streaming chat: tokens as they are written, Esc abandons a turn, the model stays loaded between turns |
+| `kilix-bonsai-chat` | the 1-bit text models | On a GPU, streams one vendor process per turn; on CPU, opens bonsai-cpu's resident, persistent chat |
 | `kilix-bonsai-image` | Bonsai Image 4B | Prompt, reference image, seed, size and steps; a gallery that records what produced each result and can feed one back in |
 | `kilix-bonsai-speech` | VibeVoice ASR BitNet | Record or point at a WAV; transcript grows chunk by chunk; copy or write it out |
 
@@ -98,6 +98,7 @@ ship with it.
 | `KILIX_BONSAI_NOTARY_HOME` | Vendor runtime's state root (regular 8B) |
 | `KILIX_BONSAI_PRISM_BIN` | Pinned vendor binary directory (regular 8B) |
 | `KILIX_BONSAI_8B_GGUF` | Path to the 8B weights on the running host |
+| `BONSAI_CPU_PREFIX` | Companion CPU tool's install prefix when it is not on PATH (default `~/.local`) |
 | `KILIX_BONSAI_IMAGE_REMOTE` | Image scaffold's remote subcommand |
 | `KILIX_TUI_UTILS_HOME` | Where to find the shared chrome, if not alongside |
 
@@ -108,41 +109,41 @@ guessed from a stack trace.
 
 ## Runtimes
 
-Nothing here reimplements inference. Chat drives a `llama-server` built from
-the vendored llama.cpp (`scripts/build-runtime.sh`), speech drives VibeASR's
-`asr_infer`, and images drive the image scaffold's own CLI, local or remote.
-Each is *probed* rather than assumed — an interface that cannot run says so on
-its first screen instead of failing minutes into a model load.
+Nothing here reimplements inference. On a GPU, chat drives the pinned vendor
+launchers, one process per turn. On CPU it delegates to `bonsai-cpu`, whose
+pinned upstream `llama-server` remains resident behind the full chat TUI.
+Speech drives VibeASR's `asr_infer`, and images drive the image scaffold's own
+CLI, local or remote. Each backend is *probed* rather than assumed — an
+interface that cannot run says so on its first screen instead of failing
+minutes into a model load.
 
-Two findings worth recording, both discovered by running the things rather than
+Three findings worth recording, all discovered by running the things rather than
 reading about them:
 
 - **`asr_stream_server` is unusable in the build available here.** It aborts
   inside `vae_encode_impl` on every clip, including ones `asr_infer`
   transcribes without complaint. The resident-server design would be better;
   paying a model load per utterance is the cost of using the binary that works.
-- **The Bonsai GGUFs are not llama.cpp models at all.** `Q1_0` is not a ggml
-  tensor type and a stock `llama-server` aborts on it — but the fix is not a
-  different llama.cpp fork. These checkpoints belong to a deterministic integer
-  engine that imports the GGUF into a safetensors artifact and runs it with its
-  own kernel, giving byte-identical output across machines. Its CPU path is
-  canonical; CUDA is an optional accelerator. The BitNet `I2_S` checkpoint is a
-  separate case again and wants `bitnet.cpp`. So `scripts/build-runtime.sh`
-  serves no chat model carried here, and the chat interface needs an adapter
-  per engine rather than one HTTP client.
+- **The first stock llama.cpp tested here could not load the Bonsai GGUFs.**
+  `Q1_0` was not a ggml tensor type at that revision, so the original working
+  path used the vendor engine; a separate deterministic integer engine can
+  still import the GGUF and produce byte-identical receipts. Upstream
+  llama.cpp learned `Q1_0` in April 2026, and `bonsai-cpu` now pins and owns
+  that direct CPU path. The BitNet `I2_S` checkpoint is a separate case again
+  and wants `bitnet.cpp`. The standalone `scripts/build-runtime.sh` is
+  therefore a reference build, not a chat backend selected automatically.
 - **The image model cannot run on every host that can hold it.** Compute
   capability 7.0 is required and older cards fail at the first kernel launch,
   well after a long model load — so the backend is chosen from what `doctor`
   reports, and a remote is a first-class option rather than a fallback.
 
-Chat picks in that order too: a local card, then a remote one, then **CPU**.
-Upstream llama.cpp learned `Q1_0` in April 2026, so a card is no longer
-required at all — it is about twenty times slower (roughly 5 t/s against 131
-for 8B) but "slow" beats "not on this machine", which was the previous answer.
-8B stays the default on CPU, but 27B is available there too — measured at 1.5
-t/s generation, so a full answer really is minutes. It is warned rather than
-withheld: slow is not broken, and whether that trade is worth making is the
-caller's judgement, not this tool's.
+Chat probes in that order too: a local card, then a remote one, then **CPU**.
+The CPU choice is a delegation, not another per-turn backend in this TUI:
+curses exits and `bonsai-cpu chat` takes over with its resident server, saved
+conversations, model picker, and reasoning controls. 8B stays the default;
+27B is available when explicitly requested, with its minutes-per-response cost
+stated rather than hidden. BitNet 2B4T is refused instead of substituted:
+its declared engine is `bitnet.cpp`, and no chat adapter here drives it yet.
 
 `kilix` reaches the same surface: `kilix bonsai`, `kilix bonsai list`,
 `kilix bonsai pull …`, and so on. It is also in the Kilix 95 Start menu under

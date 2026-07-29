@@ -33,16 +33,15 @@ without multimodal support cannot use it at all.
 
 ## Running it
 
-> **This does not run under llama.cpp.** `Q1_0` is not a ggml tensor type, so
-> a stock `llama-server` aborts while reading tensor info. These checkpoints
-> are run by a deterministic integer engine that first *imports* the GGUF into
-> a safetensors artifact and then executes it with its own kernel — a
-> published, open project. A vendor CUDA runtime is an optional accelerator,
-> not a requirement; the CPU path is the canonical one.
+The companion `bonsai-cpu` command pins an upstream llama.cpp revision that
+supports both `Q1_0` and this model's hybrid-attention graph. On a machine
+without a usable GPU, `kilix-bonsai-chat bonsai-27b` delegates to that
+resident-server TUI and warns that a response can take minutes.
 
-It loads on CPU. A CUDA runtime is much faster, but 27B at 1-bit plus a KV
-cache does not comfortably share an 8 GiB card with a second float process —
-budget for one at a time rather than discovering it under load.
+The vendor CUDA runtime is much faster, but 27B at 1-bit plus a KV cache does
+not comfortably share an 8 GiB card with a second float process. Kilix starts
+one vendor process per turn and releases it afterward rather than keeping the
+card claimed invisibly.
 
 Upstream: <https://huggingface.co/prism-ml/Bonsai-27B-gguf> · Apache-2.0
 

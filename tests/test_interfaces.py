@@ -254,6 +254,14 @@ class ImageRequestTest(unittest.TestCase):
 class RuntimeProbeTest(unittest.TestCase):
     """Runtimes are asked, never assumed."""
 
+    def test_chat_docs_describe_the_current_backends(self) -> None:
+        from kilix_bonsai.runtime import chat
+        module = load_tool("kilix-bonsai-chat")
+        self.assertNotIn("no CPU fallback", chat.__doc__ or "")
+        self.assertIn("delegates", chat.__doc__ or "")
+        self.assertNotIn("stays loaded", module.__doc__ or "")
+        self.assertIn("bonsai-cpu", module.__doc__ or "")
+
     def test_the_chat_probe_does_not_block_construction(self) -> None:
         import inspect
         module = load_tool("kilix-bonsai-chat")
@@ -487,6 +495,29 @@ class CpuFallbackTest(unittest.TestCase):
         eight, _ = self._forced(cpu_present=False, free=None)
         self.assertFalse(eight.usable)
         self.assertIn("bonsai-cpu", eight.reason)
+
+    def test_cpu_runner_finds_the_user_install_off_path(self) -> None:
+        import tempfile
+        from kilix_bonsai.runtime import chat
+        saved_which = chat.shutil.which
+        saved_prefix = os.environ.get("BONSAI_CPU_PREFIX")
+        with tempfile.TemporaryDirectory() as prefix:
+            bindir = os.path.join(prefix, "bin")
+            os.makedirs(bindir)
+            runner = os.path.join(bindir, "bonsai-cpu")
+            with open(runner, "w", encoding="utf-8") as handle:
+                handle.write("#!/bin/sh\n")
+            os.chmod(runner, 0o700)
+            chat.shutil.which = lambda name: None
+            os.environ["BONSAI_CPU_PREFIX"] = prefix
+            try:
+                self.assertEqual(chat.cpu_runtime(), runner)
+            finally:
+                chat.shutil.which = saved_which
+                if saved_prefix is None:
+                    os.environ.pop("BONSAI_CPU_PREFIX", None)
+                else:
+                    os.environ["BONSAI_CPU_PREFIX"] = saved_prefix
 
     def test_cpu_delegates_to_the_flagship_tui(self) -> None:
         from kilix_bonsai.runtime import chat

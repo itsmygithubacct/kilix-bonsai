@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Build the inference runtime the chat interface drives.
+# Build the repository's standalone/reference llama-server.
 #
-# `llama-server` rather than `llama-cli`: an HTTP API with token streaming, a
-# mid-generation cancel, and a stated end-of-turn is what makes a chat UI worth
-# using. Scraping an interactive CLI meant for humans gets all three wrong.
+# The current chat interface does not use this build: GPU chat drives the
+# vendor launchers, and CPU chat delegates to bonsai-cpu's pinned runtime.
+# Keep this explicit builder for callers of src/kilix_bonsai/runtime/llama.py
+# and for runtime experiments; it is not silently selected as a model adapter.
 #
 # The build lands outside the source tree, next to the weights, because a
 # compiled binary is per-machine and this repository is published.

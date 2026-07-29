@@ -27,18 +27,15 @@ copy the machine already has.
 
 ## Running it
 
-> **This does not run under llama.cpp.** `Q1_0` is not a ggml tensor type, so
-> a stock `llama-server` aborts while reading tensor info. These checkpoints
-> are run by a deterministic integer engine that first *imports* the GGUF into
-> a safetensors artifact and then executes it with its own kernel — a
-> published, open project. A vendor CUDA runtime is an optional accelerator,
-> not a requirement; the CPU path is the canonical one.
+Current upstream llama.cpp supports `Q1_0`. The companion `bonsai-cpu` command
+pins a verified revision and runs this GGUF directly on CPU; when no usable GPU
+is found, `kilix-bonsai-chat` hands the terminal to its resident, persistent
+chat interface. On a GPU, Kilix uses the vendor launcher for one turn at a time
+so the card is released for image generation between requests.
 
-The GGUF loads in that fork's runtime; this repository does not build
-one, and deliberately does not pretend to pick one for you. The Python packages
-`install-deps.sh` puts in the model's virtualenv (`numpy`, `safetensors`,
-`ecdsa`) are what a deterministic integer front end and its receipt signing
-need on top of a runtime, not what the GGUF needs to load.
+The deterministic integer front end remains a distinct option when
+byte-identical receipts are the goal. Its import step, safetensors artifact,
+and signing dependencies are not required by the direct llama.cpp CPU path.
 
 ## Provenance
 

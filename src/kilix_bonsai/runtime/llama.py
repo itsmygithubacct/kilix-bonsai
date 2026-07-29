@@ -1,14 +1,11 @@
-"""A managed `llama-server`, and a streaming client for it.
+"""A managed llama-server retained as a runtime probe and reference client.
 
-The chat UI talks to an HTTP server rather than scraping a CLI, and that choice
-is what makes the UI worth using: tokens arrive as they are produced, a
-generation can be abandoned mid-sentence by closing the connection, and the
-end of a turn is a fact the protocol states rather than something a parser
-infers from a prompt string reappearing.
-
-The cost is a process to own. This module owns it: one server per model, bound
-to loopback on a port the kernel chose, started on demand, health-polled while
-it maps several gigabytes, and killed on exit even when the UI crashes.
+The current chat tool does not use this path. GPU chat needs the vendor
+launchers, while CPU chat delegates to ``bonsai-cpu``, which owns its pinned
+upstream server and richer interface. This module remains useful to callers
+that explicitly want the repository's separately built server: it binds to
+loopback, health-polls startup, streams completions, and kills its child group
+on exit.
 """
 from __future__ import annotations
 

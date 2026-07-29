@@ -37,7 +37,8 @@ Each repository is pinned at its own commit.
 ## Running it
 
 Built to be run by `bitnet.cpp`, which compiles its ternary kernels with clang —
-hence `clang` and `cmake` in this model's dependency list. It also loads in
-recent llama.cpp builds with I2_S support.
+hence `clang` and `cmake` in this model's dependency list. No Kilix chat
+adapter drives that engine yet. Selecting this checkpoint therefore produces
+an explicit `bitnet.cpp` refusal instead of quietly substituting Bonsai 8B.
 
 Upstream: <https://huggingface.co/microsoft/bitnet-b1.58-2B-4T> · MIT

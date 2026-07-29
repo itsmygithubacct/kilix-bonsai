@@ -1,21 +1,22 @@
-"""Chat against the regular Bonsai checkpoints, on whichever GPU is free.
+"""Route regular Bonsai chat to a measured GPU or the dedicated CPU tool.
 
-These are not stock llama.cpp models — `Q1_0` is not a ggml tensor type — so
-this drives the vendor's pinned llama.cpp build, which understands it. That
-build is CUDA-only with no CPU fallback, so a host without a working driver
-cannot serve chat at all and has to borrow one, exactly as image generation
-already does.
+On a GPU this module drives the vendor's pinned launchers. They are one-shot:
+each turn starts a process, resends the transcript, streams its output, and
+releases the card immediately. A resident 27B would otherwise quietly exclude
+image generation from the same card.
 
-Two policies live here, both deliberate:
+With no usable card, the TUI delegates to ``bonsai-cpu chat`` instead. That
+tool owns the CPU experience: a resident upstream llama-server, saved
+conversations, model switching, and reasoning controls. Keeping the CPU loop
+there avoids two interfaces with different capabilities over the same model.
 
-**The GPU is claimed on demand and released.** A resident 27B holds most of an
-8 GB card, and the image model wants that same card. Holding it between turns
-would mean the two tools quietly exclude each other, so the process is started
-for a session and stopped when the session ends.
+The ternary BitNet 2B4T checkpoint is a separate engine family. Nothing here
+drives bitnet.cpp yet, so asking for it is refused explicitly rather than
+silently substituting Bonsai 8B.
 
-**8B is the default; 27B is earned.** Free VRAM is measured before choosing,
-not assumed, because the failure when it is wrong is an out-of-memory abort
-minutes into a load rather than a refusal.
+Free VRAM is measured before choosing 8B or 27B, not assumed, because a wrong
+guess becomes an out-of-memory abort minutes into a load rather than a useful
+refusal.
 """
 from __future__ import annotations
 
@@ -110,9 +111,18 @@ def cpu_runtime() -> str | None:
     Upstream llama.cpp learned `Q1_0` in April 2026, so a CPU path exists that
     needs no vendor build and no card at all. It is slower by an order of
     magnitude — around 8 t/s for 8B against 131 on a GPU — but "slow" beats
-    "no chat on this machine", which was the previous answer.
+    "no chat on this machine", which was the previous answer. GUI launchers do
+    not always inherit the user's local bin directory, so check the companion
+    installer's standard prefix after PATH.
     """
-    return shutil.which("bonsai-cpu")
+    found = shutil.which("bonsai-cpu")
+    if found is not None:
+        return found
+    prefix = os.environ.get(
+        "BONSAI_CPU_PREFIX", os.path.join(os.path.expanduser("~"), ".local"))
+    candidate = os.path.join(prefix, "bin", "bonsai-cpu")
+    return candidate if os.path.isfile(candidate) and os.access(
+        candidate, os.X_OK) else None
 
 
 def needs_mib(model_id: str) -> int:
