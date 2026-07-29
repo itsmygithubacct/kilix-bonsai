@@ -33,6 +33,10 @@ without multimodal support cannot use it at all.
 
 ## Running it
 
+> **Stock llama.cpp cannot load this.** `Q1_0` is not a ggml tensor
+> type, so a stock `llama-server` aborts while reading tensor info. It needs
+> the vendor's own llama.cpp fork.
+
 It loads on CPU. A CUDA runtime is much faster, but 27B at 1-bit plus a KV
 cache does not comfortably share an 8 GiB card with a second float process —
 budget for one at a time rather than discovering it under load.

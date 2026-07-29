@@ -95,6 +95,15 @@ reading about them:
   inside `vae_encode_impl` on every clip, including ones `asr_infer`
   transcribes without complaint. The resident-server design would be better;
   paying a model load per utterance is the cost of using the binary that works.
+- **The Bonsai GGUFs do not load in stock llama.cpp.** `Q1_0` is not one of
+  ggml's ~40 tensor types; a stock `llama-server` aborts on
+  `GGML_ASSERT(info->type < GGML_TYPE_COUNT)` while reading tensor info, before
+  any inference. These checkpoints need the vendor's own llama.cpp fork, and
+  the BitNet `I2_S` checkpoint likewise needs `bitnet.cpp`. The chat interface
+  and its HTTP client are runtime-agnostic — point
+  `KILIX_BONSAI_RUNTIME_DIR` at a fork that understands the type — but
+  `scripts/build-runtime.sh` builds stock llama.cpp, which is **not** sufficient
+  for any chat model carried here.
 - **The image model cannot run on every host that can hold it.** Compute
   capability 7.0 is required and older cards fail at the first kernel launch,
   well after a long model load — so the backend is chosen from what `doctor`

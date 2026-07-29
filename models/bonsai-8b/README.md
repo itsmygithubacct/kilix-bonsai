@@ -27,7 +27,11 @@ copy the machine already has.
 
 ## Running it
 
-The GGUF loads in any llama.cpp-family runtime; this repository does not build
+> **Stock llama.cpp cannot load this.** `Q1_0` is not a ggml tensor
+> type, so a stock `llama-server` aborts while reading tensor info, before
+> any inference happens. It needs the vendor's own llama.cpp fork.
+
+The GGUF loads in that fork's runtime; this repository does not build
 one, and deliberately does not pretend to pick one for you. The Python packages
 `install-deps.sh` puts in the model's virtualenv (`numpy`, `safetensors`,
 `ecdsa`) are what a deterministic integer front end and its receipt signing
