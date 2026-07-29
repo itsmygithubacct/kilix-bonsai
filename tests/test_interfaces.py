@@ -371,6 +371,11 @@ class ChromeAdoptionTest(unittest.TestCase):
 class CpuFallbackTest(unittest.TestCase):
     """No card is a reason to be slow, not a reason to refuse."""
 
+    def test_release_kills_the_whole_process_group(self) -> None:
+        import inspect
+        from kilix_bonsai.runtime import chat
+        self.assertIn("killpg", inspect.getsource(chat.Session.release))
+
     def _forced(self, cpu_present: bool, free):
         from kilix_bonsai.runtime import chat
         saved_vram, saved_cpu = chat.free_vram_mib, chat.cpu_runtime

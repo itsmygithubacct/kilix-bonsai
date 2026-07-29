@@ -22,6 +22,7 @@ from __future__ import annotations
 import os
 import shlex
 import shutil
+import signal
 import subprocess
 from dataclasses import dataclass
 
@@ -322,12 +323,26 @@ class Session:
         return self.argv(prompt)
 
     def release(self) -> None:
+        """Terminate the whole process group, and make sure it is gone.
+
+        The Popen was started in its own session, and the launcher wraps the
+        real worker in `env` — on the remote path in `ssh` too — so a polite
+        terminate() of the direct child can leave the process actually
+        holding the card alive. Signal the group, then escalate.
+        """
         process, self.process = self.process, None
-        if process is not None and process.poll() is None:
+        if process is None or process.poll() is not None:
+            return
+        try:
+            os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+        except (OSError, ProcessLookupError):
             process.terminate()
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
             try:
-                process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
+                os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+            except (OSError, ProcessLookupError):
                 process.kill()
 
     def __enter__(self) -> "Session":
