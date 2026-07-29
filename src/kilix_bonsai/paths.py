@@ -60,6 +60,18 @@ def models_dir() -> str:
                                    "models"))
 
 
+def runtime_dir() -> str:
+    """Return where built inference runtimes live.
+
+    Out of the source tree for the same reason the weights are: a compiled
+    binary is per-machine, and a repository published under a pseudonymous
+    identity should not accumulate build output.
+    """
+    return _expand(os.environ.get("KILIX_BONSAI_RUNTIME_DIR")
+                   or os.path.join(gpu_terminal_home(), "kilix-bonsai",
+                                   "runtime"))
+
+
 def venv_dir(model_id: str) -> str:
     """Return the virtualenv `install-deps.sh` builds for one model.
 

@@ -68,6 +68,7 @@ class Model:
     license: str
     upstream: str
     deps: dict = field(default_factory=dict)
+    runtime: dict = field(default_factory=dict)
     variants: tuple[Variant, ...] = ()
     store_env: str = ""
     store_default: str = ""
@@ -142,7 +143,8 @@ def load_model(folder: str) -> Model:
         task=raw.get("task", ""), parameters=raw.get("parameters", ""),
         quantization=raw.get("quantization", ""),
         license=raw.get("license", ""), upstream=raw.get("upstream", ""),
-        deps=raw.get("deps") or {}, variants=variants,
+        deps=raw.get("deps") or {}, runtime=raw.get("runtime") or {},
+        variants=variants,
         store_env=store.get("env", ""), store_default=store["default"],
         shared_with=store.get("shared_with"), folder=folder)
 

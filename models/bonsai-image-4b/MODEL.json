@@ -21,6 +21,14 @@
     "pip": [],
     "note": "The gemlite/HQQ CUDA stack is large and version-sensitive, so it is resolved from the image scaffold's own lock rather than pinned a second time here. Needs an NVIDIA GPU of compute capability 7.0 or newer."
   },
+  "runtime": {
+    "kind": "image",
+    "engine": "bonsai-cli",
+    "cli_variant": {
+      "ternary-gemlite": "ternary",
+      "binary-gemlite": "binary"
+    }
+  },
   "variants": [
     {
       "id": "ternary-gemlite",

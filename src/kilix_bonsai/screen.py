@@ -102,11 +102,15 @@ def write(surface: Surface, y: int, x: int, text: str) -> None:
 
 
 def run(render: Callable[[Any, Any], None], state: Any, *,
-        handle: Callable[[int, Any], bool]) -> int:
+        handle: Callable[[int, Any], bool], tick_ms: int | None = None) -> int:
     """Run until `handle` returns False.
 
+    `tick_ms` makes the loop wake on its own, which is what lets a screen
+    repaint while a background thread is still producing — tokens arriving from
+    a model, or a transcript growing chunk by chunk.
+
     `KILIX_TUI_HEADLESS=1` prints one frame and exits, which is how the other
-    Kilix tools are smoke-tested and how this one is too.
+    Kilix tools are smoke-tested and how these are too.
     """
     if os.environ.get("KILIX_TUI_HEADLESS") == "1":
         print(render_to_text(render, state))
@@ -115,9 +119,15 @@ def run(render: Callable[[Any, Any], None], state: Any, *,
     def _loop(stdscr: Any) -> int:
         curses.curs_set(0)
         stdscr.keypad(True)
+        if curses.has_colors():
+            curses.start_color()
+            curses.use_default_colors()
+        if tick_ms:
+            stdscr.timeout(tick_ms)
         state.stdscr = stdscr
         while True:
             stdscr.erase()
+            curses.curs_set(0)
             render(stdscr, state)
             stdscr.refresh()
             key = stdscr.getch()

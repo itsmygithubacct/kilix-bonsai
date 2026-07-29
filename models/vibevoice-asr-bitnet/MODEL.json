@@ -21,6 +21,12 @@
     "pip": [],
     "note": "The two GGUFs are ready to use. The safetensors variant is only needed to re-run the conversion yourself."
   },
+  "runtime": {
+    "kind": "speech-to-text",
+    "engine": "vibeasr",
+    "vae_file": "vibeasr-vae-encoder-i8_s.gguf",
+    "lm_file": "vibeasr-lm-i2_s-embed-q6_k.gguf"
+  },
   "variants": [
     {
       "id": "gguf",

@@ -184,6 +184,18 @@ while IFS=$'\t' read -r kind path size sha url; do
   printf '[%d/%d] %s (%s)\n' "$index" "$count" "$path" "$(human "$size")" >&2
   # A previous run's .part is resumed; a --force run starts clean.
   [ "$FORCE" = 0 ] || rm -f -- "$part"
+
+  # A .part at or past the published size cannot be resumed from — it is
+  # already wrong. This happens for real: `curl -C -` sends a Range, an
+  # upstream CDN ignores it and replies with the whole body, and curl appends,
+  # leaving a file LARGER than the target. Without this guard every retry
+  # appends another copy and the download can never succeed.
+  part_size="$(stat -c %s -- "$part" 2>/dev/null || echo 0)"
+  if [ "$part_size" -ge "$size" ]; then
+    [ "$part_size" = 0 ] || log "$path: discarding an unusable partial file"
+    rm -f -- "$part"
+  fi
+
   if ! fetch "$url" "$part"; then
     log "$path: download failed"
     failed=$((failed + 1))
@@ -192,14 +204,23 @@ while IFS=$'\t' read -r kind path size sha url; do
 
   actual="$(stat -c %s -- "$part" 2>/dev/null || echo 0)"
   if [ "$actual" != "$size" ]; then
-    log "$path: expected $size bytes, got $actual — leaving .part to resume"
+    if [ "$actual" -gt "$size" ]; then
+      # Overshot: resuming would append yet again, so the partial is dropped.
+      log "$path: got $actual bytes for a $size byte file — discarding it"
+      rm -f -- "$part"
+    else
+      log "$path: expected $size bytes, got $actual — .part kept to resume"
+    fi
     failed=$((failed + 1))
     continue
   fi
   if [ "$NO_VERIFY" = 0 ] && [ "$sha" != "-" ]; then
     if [ "$(sha256sum -- "$part" | cut -d' ' -f1)" != "$sha" ]; then
       log "$path: sha256 mismatch — upstream content changed, or the transfer"
-      log "$path: was corrupted. Not installing it; the .part file is kept."
+      log "$path: was corrupted. Discarding it rather than installing it."
+      # Not kept: a complete-but-wrong file is not a resumable prefix, and
+      # keeping it would make the next run resume from its end.
+      rm -f -- "$part"
       failed=$((failed + 1))
       continue
     fi

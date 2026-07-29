@@ -17,7 +17,7 @@ from __future__ import annotations
 import os
 import sys
 
-from . import provision, screen, store
+from . import launcher, provision, screen, store
 from .catalog import Model, Variant, load
 
 TITLE = "Kilix Bonsai"
@@ -43,9 +43,16 @@ class State:
         self.pending: dict | None = None
         self.states: dict[tuple[str, str], store.VariantState] = {}
         self.refresh()
-        # An empty store opens on setup rather than on a list of things that
-        # are all absent; a machine that has anything opens on the list.
-        self.screen = "list" if store.any_present(self.models) else "setup"
+        # Three entry states, cheapest question first. Nothing downloaded is
+        # a first run and opens on setup. Something runnable opens on the
+        # launcher, because "open a model" is what someone came to do. Weights
+        # present but no interface for them falls back to the store list.
+        if not store.any_present(self.models):
+            self.screen = "setup"
+        elif any(launcher.launchable(model)[0] for model in self.models):
+            self.screen = "launch"
+        else:
+            self.screen = "list"
 
     # -- data ---------------------------------------------------------------
 
@@ -106,6 +113,22 @@ class State:
                   f"into {state.directory}")
         self.ask(f"Download {model.title} · {variant.title}", detail,
                  provision.pull_argv(model, variant))
+
+    def launch(self, model: Model) -> None:
+        """Hand the terminal to a model's interface, and take it back after.
+
+        Deliberately not a background process: these are full-screen terminal
+        programs, and the launcher is the thing that was in the way.
+        """
+        ok, detail = launcher.launchable(model)
+        if not ok:
+            self.message = f"{model.title}: {detail}"
+            return
+        argv = launcher.tool_argv(model)
+        provision.run_detached_from_curses(
+            self, argv, f"{detail} — {model.title}")
+        self.refresh()
+        self.message = f"closed {model.title}"
 
     def install_deps(self, model: Model) -> None:
         packages = ", ".join(model.deps.get("apt") or ()) or "none"
@@ -185,7 +208,7 @@ def render_list(surface, state: State) -> None:
                      f"{store.human_bytes(variant.bytes):>6}  {label}")
         row += 1
     _footer(surface, state,
-            "↑/↓ move · Enter details · d download · i deps · q quit")
+            "↑/↓ move · Enter details · o open · d download · i deps · q quit")
 
 
 def render_detail(surface, state: State) -> None:
@@ -253,6 +276,7 @@ def render_confirm(surface, state: State) -> None:
 
 
 SCREENS = {
+    "launch": launcher.render,
     "setup": render_setup,
     "list": render_list,
     "detail": render_detail,
@@ -302,6 +326,15 @@ def handle(key: int, state: State) -> bool:
     if step:
         state.selected = max(0, min(state.selected + step,
                                     len(state.models) - 1))
+    elif state.screen == "launch":
+        if key in screen.SELECT:
+            state.launch(state.model)
+        elif key == ord("\t"):
+            state.screen = "list"
+        elif key in (ord("d"), ord("D")):
+            state.download(state.model, state.model.default_variant)
+        elif key in screen.REFRESH:
+            state.refresh()
     elif key == ord("\t"):
         state.screen = "list" if state.screen == "setup" else "setup"
     elif key in screen.SELECT:
@@ -312,6 +345,8 @@ def handle(key: int, state: State) -> bool:
             state.screen = "detail"
     elif key in (ord("d"), ord("D")):
         state.download(state.model, state.model.default_variant)
+    elif key in (ord("o"), ord("O")):
+        state.launch(state.model)
     elif key in (ord("i"), ord("I")):
         state.install_deps(state.model)
     elif key in screen.REFRESH:

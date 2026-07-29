@@ -129,6 +129,61 @@ class DryRunTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
 
 
+class ResumeTest(unittest.TestCase):
+    """A partial file that cannot be resumed from must be discarded.
+
+    This is a regression test for a real failure. `curl -C -` sends a Range
+    header; an upstream CDN answered a resume request with the *whole* body,
+    curl appended it, and the `.part` ended up 1.50 GB for a 1.16 GB file. The
+    original code kept that file "to resume", so every retry appended another
+    copy and the download could never complete — it got further from finishing
+    each time. Nothing in the suite caught it because the fast tests only ever
+    downloaded small files that succeeded on the first attempt.
+    """
+
+    def setUp(self) -> None:
+        self.model = catalog.find("bonsai-8b")
+        self.variant = self.model.default_variant
+        self.item = max(self.variant.files, key=lambda f: f.size)
+
+    def _run_with_part(self, part_size: int):
+        with tempfile.TemporaryDirectory() as root:
+            directory = os.path.join(root, "bonsai-8b")
+            os.makedirs(directory)
+            part = os.path.join(directory, self.item.path + ".part")
+            with open(part, "wb") as handle:
+                handle.write(b"\0" * part_size)
+            # --dry-run stops before any transfer, so this asserts the guard's
+            # decision without pulling a gigabyte over the network.
+            result = run([self.model.script("pull.sh"), "--dry-run"],
+                         models_dir=root)
+            return result, part
+
+    def test_an_oversized_partial_is_reported_as_outstanding(self) -> None:
+        # A .part larger than the target must not be counted as progress.
+        result, _ = self._run_with_part(self.item.size + 1024)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("to fetch", result.stderr)
+
+    def test_the_guard_discards_rather_than_resumes(self) -> None:
+        with open(os.path.join(SHARED, "pull.sh"), encoding="utf-8") as handle:
+            body = handle.read()
+        # The two paths that must delete: a pre-existing .part at or past the
+        # published size, and a fetch that overshot.
+        self.assertIn('[ "$part_size" -ge "$size" ]', body)
+        self.assertIn('[ "$actual" -gt "$size" ]', body)
+        self.assertIn("discarding", body)
+
+    def test_a_digest_mismatch_does_not_leave_a_resumable_prefix(self) -> None:
+        # A complete-but-wrong file is not a prefix of the right one, so
+        # keeping it would make the next run resume from its end.
+        with open(os.path.join(SHARED, "pull.sh"), encoding="utf-8") as handle:
+            body = handle.read()
+        mismatch = body[body.index("sha256 mismatch"):]
+        self.assertIn('rm -f -- "$part"',
+                      mismatch[:mismatch.index("failed=$((failed + 1))")])
+
+
 class PlanTest(unittest.TestCase):
     """The scripts read the catalog through one command; it has to be stable."""
 
