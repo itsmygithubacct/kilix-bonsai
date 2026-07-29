@@ -240,6 +240,11 @@ class ImageRequestTest(unittest.TestCase):
 class RuntimeProbeTest(unittest.TestCase):
     """Runtimes are asked, never assumed."""
 
+    def test_the_loop_can_be_finished_by_a_thread(self) -> None:
+        import inspect
+        self.assertIn('getattr(state, "finished", False)',
+                      inspect.getsource(screen.run))
+
     def test_each_runtime_reports_availability_without_running_anything(self):
         self.assertIn(type(llama.server_binary()).__name__, ("str", "NoneType"))
         self.assertIn(type(asr.engine_binary()).__name__, ("str", "NoneType"))

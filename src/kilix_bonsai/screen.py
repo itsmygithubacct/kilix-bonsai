@@ -103,11 +103,12 @@ def write(surface: Surface, y: int, x: int, text: str) -> None:
 
 def run(render: Callable[[Any, Any], None], state: Any, *,
         handle: Callable[[int, Any], bool], tick_ms: int | None = None) -> int:
-    """Run until `handle` returns False.
+    """Run until `handle` returns False, or `state.finished` becomes true.
 
     `tick_ms` makes the loop wake on its own, which is what lets a screen
     repaint while a background thread is still producing — tokens arriving from
-    a model, or a transcript growing chunk by chunk.
+    a model, or a transcript growing chunk by chunk. The same wakeup is when
+    `state.finished` is honoured, so a thread can end the loop without a key.
 
     `KILIX_TUI_HEADLESS=1` prints one frame and exits, which is how the other
     Kilix tools are smoke-tested and how these are too.
@@ -132,6 +133,8 @@ def run(render: Callable[[Any, Any], None], state: Any, *,
             stdscr.refresh()
             key = stdscr.getch()
             if key in (-1, curses.KEY_RESIZE):
+                if getattr(state, "finished", False):
+                    return 0
                 continue
             if not handle(key, state):
                 return 0
