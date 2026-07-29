@@ -1,0 +1,141 @@
+{
+  "id": "vibevoice-asr-bitnet",
+  "title": "VibeVoice ASR BitNet",
+  "summary": "Speech recognition, quantized to run in real time on CPU. This is the same weight set Kilix dictation uses, so it is stored under the voice catalog id rather than beside the other models \u2014 one copy, two front ends.",
+  "task": "speech-to-text",
+  "parameters": "7B base, heterogeneously quantized",
+  "quantization": "I2_S + Q6_K decoder, I8_S tokenizer",
+  "license": "MIT",
+  "upstream": "https://huggingface.co/microsoft/VibeVoice-ASR-BitNet",
+  "store": {
+    "env": "KILIX_BONSAI_VIBEVOICE_DIR",
+    "default": "$KILIX_DATA_HOME/voice/models/vibevoice-asr-bitnet",
+    "shared_with": "kilix-voice, which resolves this exact path from the catalog id vibevoice-asr-bitnet"
+  },
+  "deps": {
+    "apt": [
+      "build-essential",
+      "cmake",
+      "git"
+    ],
+    "pip": [],
+    "note": "The two GGUFs are ready to use. The safetensors variant is only needed to re-run the conversion yourself."
+  },
+  "variants": [
+    {
+      "id": "gguf",
+      "title": "Quantized GGUF (ready to use)",
+      "default": true,
+      "subdir": "",
+      "sources": [
+        {
+          "repo": "microsoft/VibeVoice-ASR-BitNet",
+          "revision": "66e78021ab8f5f06133d1ab421ba4d348bda97c9",
+          "files": [
+            {
+              "path": "vibeasr-lm-i2_s-embed-q6_k.gguf",
+              "size": 992877600,
+              "sha256": "fbe273d8dc2f2433bb25f849e19d77ea65aaa2188d12c20cee987ab6f321e002"
+            },
+            {
+              "path": "vibeasr-vae-encoder-i8_s.gguf",
+              "size": 703080064,
+              "sha256": "4941c82608c253ec066b5cc74d3dd11a5c8fef96cccbc5b87359ef0fe4338df6"
+            },
+            {
+              "path": "config.json",
+              "size": 3527,
+              "sha256": null
+            },
+            {
+              "path": "generation_config.json",
+              "size": 138,
+              "sha256": null
+            },
+            {
+              "path": "tokenizer.json",
+              "size": 7028015,
+              "sha256": null
+            },
+            {
+              "path": "tokenizer_config.json",
+              "size": 1289,
+              "sha256": null
+            },
+            {
+              "path": "vocab.json",
+              "size": 2776833,
+              "sha256": null
+            },
+            {
+              "path": "README.md",
+              "size": 4124,
+              "sha256": null
+            }
+          ]
+        }
+      ],
+      "bytes": 1705771590
+    },
+    {
+      "id": "safetensors",
+      "title": "Original SafeTensors (for conversion)",
+      "default": false,
+      "subdir": "safetensors",
+      "sources": [
+        {
+          "repo": "microsoft/VibeVoice-ASR-BitNet",
+          "revision": "66e78021ab8f5f06133d1ab421ba4d348bda97c9",
+          "files": [
+            {
+              "path": "model-00001-of-00003.safetensors",
+              "size": 4996674400,
+              "sha256": "58cb328634bb4b7e5afcc4f14c43261a0c636c9031b0b085bd3ef53c131aaf19"
+            },
+            {
+              "path": "model-00002-of-00003.safetensors",
+              "size": 4963184724,
+              "sha256": "410349401256a9a995424408f8f77a21cad5e53183e07207820d7b25e84682df"
+            },
+            {
+              "path": "model-00003-of-00003.safetensors",
+              "size": 1296761656,
+              "sha256": "49c2d7591f9dcbbd6fb37baa58379211f21df30dbd3c6ff39cb8c81473660cdb"
+            },
+            {
+              "path": "model.safetensors.index.json",
+              "size": 120151,
+              "sha256": null
+            },
+            {
+              "path": "config.json",
+              "size": 3527,
+              "sha256": null
+            },
+            {
+              "path": "generation_config.json",
+              "size": 138,
+              "sha256": null
+            },
+            {
+              "path": "tokenizer.json",
+              "size": 7028015,
+              "sha256": null
+            },
+            {
+              "path": "tokenizer_config.json",
+              "size": 1289,
+              "sha256": null
+            },
+            {
+              "path": "vocab.json",
+              "size": 2776833,
+              "sha256": null
+            }
+          ]
+        }
+      ],
+      "bytes": 11266550733
+    }
+  ]
+}

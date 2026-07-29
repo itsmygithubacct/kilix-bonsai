@@ -1,0 +1,105 @@
+{
+  "id": "bonsai-27b",
+  "title": "Bonsai 27B",
+  "summary": "1-bit Qwen3.5 text model, with an optional multimodal projector. The largest weight set carried here.",
+  "task": "text",
+  "parameters": "27B",
+  "quantization": "Q1_0 (1-bit weights)",
+  "license": "Apache-2.0",
+  "upstream": "https://huggingface.co/prism-ml/Bonsai-27B-gguf",
+  "store": {
+    "env": "KILIX_BONSAI_BONSAI_27B_DIR",
+    "default": "$KILIX_BONSAI_MODELS_DIR/bonsai-27b"
+  },
+  "deps": {
+    "apt": [
+      "build-essential",
+      "cmake",
+      "git",
+      "python3-venv"
+    ],
+    "pip": [
+      "numpy",
+      "safetensors",
+      "ecdsa"
+    ],
+    "note": "A 3.8 GB 1-bit checkpoint. It loads on CPU; a CUDA runtime is faster but needs more free VRAM than the resident graph and a float runtime can hold at the same time on an 8 GiB card."
+  },
+  "variants": [
+    {
+      "id": "q1_0",
+      "title": "Q1_0 GGUF (1-bit)",
+      "default": true,
+      "subdir": "",
+      "sources": [
+        {
+          "repo": "prism-ml/Bonsai-27B-gguf",
+          "revision": "f10afb355f104535e3e3e98cf7ab7795c72bd292",
+          "files": [
+            {
+              "path": "Bonsai-27B-Q1_0.gguf",
+              "size": 3803452480,
+              "sha256": "17ef842e47450caeb8eaa3ebfbbab5d2f2278b62b79be107985fb69a2f819aa0"
+            },
+            {
+              "path": "LICENSE.txt",
+              "size": 10174,
+              "sha256": null
+            },
+            {
+              "path": "NOTICE.txt",
+              "size": 411,
+              "sha256": null
+            },
+            {
+              "path": "README.md",
+              "size": 21877,
+              "sha256": null
+            }
+          ]
+        }
+      ],
+      "bytes": 3803484942
+    },
+    {
+      "id": "q1_0-mmproj",
+      "title": "Q1_0 GGUF + Q8_0 vision projector",
+      "default": false,
+      "subdir": "",
+      "sources": [
+        {
+          "repo": "prism-ml/Bonsai-27B-gguf",
+          "revision": "f10afb355f104535e3e3e98cf7ab7795c72bd292",
+          "files": [
+            {
+              "path": "Bonsai-27B-Q1_0.gguf",
+              "size": 3803452480,
+              "sha256": "17ef842e47450caeb8eaa3ebfbbab5d2f2278b62b79be107985fb69a2f819aa0"
+            },
+            {
+              "path": "Bonsai-27B-mmproj-Q8_0.gguf",
+              "size": 629246880,
+              "sha256": "eb561d41a7bbeb0fcf04883c8af11078ef6cae0a66862a0b68443cfca495269d"
+            },
+            {
+              "path": "LICENSE.txt",
+              "size": 10174,
+              "sha256": null
+            },
+            {
+              "path": "NOTICE.txt",
+              "size": 411,
+              "sha256": null
+            },
+            {
+              "path": "README.md",
+              "size": 21877,
+              "sha256": null
+            }
+          ]
+        }
+      ],
+      "bytes": 4432731822
+    }
+  ]
+}

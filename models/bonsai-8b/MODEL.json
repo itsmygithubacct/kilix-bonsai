@@ -1,0 +1,65 @@
+{
+  "id": "bonsai-8b",
+  "title": "Bonsai 8B",
+  "summary": "1-bit Qwen3 text model. The instance the deterministic integer engine was built around: same prompt and seed, same bytes, on any machine.",
+  "task": "text",
+  "parameters": "8.19B",
+  "quantization": "Q1_0 (1-bit weights)",
+  "license": "Apache-2.0",
+  "upstream": "https://huggingface.co/prism-ml/Bonsai-8B-gguf",
+  "store": {
+    "env": "KILIX_BONSAI_BONSAI_8B_DIR",
+    "default": "$KILIX_BONSAI_MODELS_DIR/bonsai-8b"
+  },
+  "deps": {
+    "apt": [
+      "build-essential",
+      "cmake",
+      "git",
+      "python3-venv"
+    ],
+    "pip": [
+      "numpy",
+      "safetensors",
+      "ecdsa"
+    ],
+    "note": "The GGUF runs under any llama.cpp-family runtime. The python packages are what a deterministic integer front end needs on top of it; nothing here builds a runtime for you."
+  },
+  "variants": [
+    {
+      "id": "q1_0",
+      "title": "Q1_0 GGUF (1-bit)",
+      "default": true,
+      "subdir": "",
+      "sources": [
+        {
+          "repo": "prism-ml/Bonsai-8B-gguf",
+          "revision": "48516770dd04643643e9f9019a2a349cf26c5dbd",
+          "files": [
+            {
+              "path": "Bonsai-8B-Q1_0.gguf",
+              "size": 1158654496,
+              "sha256": "284a335aa3fb2ced3b1b01fcb40b08aa783e3b70832767f0dd2e3fdfa134bd54"
+            },
+            {
+              "path": "LICENSE",
+              "size": 10174,
+              "sha256": null
+            },
+            {
+              "path": "NOTICE.txt",
+              "size": 412,
+              "sha256": null
+            },
+            {
+              "path": "README.md",
+              "size": 11676,
+              "sha256": null
+            }
+          ]
+        }
+      ],
+      "bytes": 1158676758
+    }
+  ]
+}

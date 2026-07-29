@@ -1,0 +1,138 @@
+{
+  "id": "bitnet-b1.58-2b4t",
+  "title": "BitNet b1.58 2B4T",
+  "summary": "The reference 1.58-bit model the whole family is named after. Small, and the one to reach for when the question is whether a runtime works at all.",
+  "task": "text",
+  "parameters": "2B, 4T training tokens",
+  "quantization": "I2_S (1.58-bit ternary)",
+  "license": "MIT",
+  "upstream": "https://huggingface.co/microsoft/bitnet-b1.58-2B-4T",
+  "store": {
+    "env": "KILIX_BONSAI_BITNET_2B4T_DIR",
+    "default": "$KILIX_BONSAI_MODELS_DIR/bitnet-b1.58-2b4t"
+  },
+  "deps": {
+    "apt": [
+      "build-essential",
+      "cmake",
+      "git",
+      "clang",
+      "python3-venv"
+    ],
+    "pip": [],
+    "note": "Built to be run by bitnet.cpp, which needs clang and cmake to compile its kernels."
+  },
+  "variants": [
+    {
+      "id": "i2_s-gguf",
+      "title": "I2_S GGUF (ready to use)",
+      "default": true,
+      "subdir": "",
+      "sources": [
+        {
+          "repo": "microsoft/bitnet-b1.58-2B-4T-gguf",
+          "revision": "a1f2f1c765812aa8af3f6eda4a313707064bba15",
+          "files": [
+            {
+              "path": "ggml-model-i2_s.gguf",
+              "size": 1187801280,
+              "sha256": "4221b252fdd5fd25e15847adfeb5ee88886506ba50b8a34548374492884c2162"
+            },
+            {
+              "path": "README.md",
+              "size": 8935,
+              "sha256": null
+            }
+          ]
+        },
+        {
+          "repo": "microsoft/bitnet-b1.58-2B-4T",
+          "revision": "04c3b9ad9361b824064a1f25ea60a8be9599b127",
+          "files": [
+            {
+              "path": "tokenizer.json",
+              "size": 9085698,
+              "sha256": null
+            },
+            {
+              "path": "tokenizer_config.json",
+              "size": 50834,
+              "sha256": null
+            },
+            {
+              "path": "special_tokens_map.json",
+              "size": 73,
+              "sha256": null
+            },
+            {
+              "path": "config.json",
+              "size": 844,
+              "sha256": null
+            },
+            {
+              "path": "generation_config.json",
+              "size": 199,
+              "sha256": null
+            },
+            {
+              "path": "LICENSE",
+              "size": 1073,
+              "sha256": null
+            }
+          ]
+        }
+      ],
+      "bytes": 1196948936
+    },
+    {
+      "id": "safetensors",
+      "title": "BF16 SafeTensors (for conversion)",
+      "default": false,
+      "subdir": "safetensors",
+      "sources": [
+        {
+          "repo": "microsoft/bitnet-b1.58-2B-4T",
+          "revision": "04c3b9ad9361b824064a1f25ea60a8be9599b127",
+          "files": [
+            {
+              "path": "model.safetensors",
+              "size": 1178623988,
+              "sha256": "8143ae115ed6babe5e5ada8fb8c5b769d8f417802b2db042ad98b4f7ed73975b"
+            },
+            {
+              "path": "config.json",
+              "size": 844,
+              "sha256": null
+            },
+            {
+              "path": "generation_config.json",
+              "size": 199,
+              "sha256": null
+            },
+            {
+              "path": "tokenizer.json",
+              "size": 9085698,
+              "sha256": null
+            },
+            {
+              "path": "tokenizer_config.json",
+              "size": 50834,
+              "sha256": null
+            },
+            {
+              "path": "special_tokens_map.json",
+              "size": 73,
+              "sha256": null
+            },
+            {
+              "path": "LICENSE",
+              "size": 1073,
+              "sha256": null
+            }
+          ]
+        }
+      ],
+      "bytes": 1187762709
+    }
+  ]
+}
