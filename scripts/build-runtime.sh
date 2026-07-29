@@ -7,6 +7,14 @@
 # because a compiled binary is per-machine.
 set -euo pipefail
 
+# Same floor as get-runtime.sh: bash ≤ 4.3 mishandles empty arrays under
+# `set -u`, and the two scripts must agree on what they run under.
+if [ "${BASH_VERSINFO[0]:-0}" -lt 4 ] \
+    || { [ "${BASH_VERSINFO[0]}" -eq 4 ] && [ "${BASH_VERSINFO[1]}" -le 3 ]; }; then
+  printf 'bonsai-cpu: bash 4.4+ required (running %s)\n' "${BASH_VERSION:-unknown}" >&2
+  exit 1
+fi
+
 GPU_TERMINAL_HOME="${GPU_TERMINAL_HOME:-$HOME/.local/gpu_terminal}"
 RUNTIME_DIR="${BONSAI_CPU_RUNTIME_DIR:-$GPU_TERMINAL_HOME/bonsai-cpu/runtime}"
 SRC_DIR="$RUNTIME_DIR/llama.cpp"

@@ -6,6 +6,14 @@
 # in runtime.pin; this script only obeys it.
 set -euo pipefail
 
+# bash ≤ 4.3 mishandles empty arrays under `set -u`; refuse rather than
+# fail strangely partway through.
+if [ "${BASH_VERSINFO[0]:-0}" -lt 4 ] \
+    || { [ "${BASH_VERSINFO[0]}" -eq 4 ] && [ "${BASH_VERSINFO[1]}" -le 3 ]; }; then
+  printf 'bonsai-cpu: bash 4.4+ required (running %s)\n' "${BASH_VERSION:-unknown}" >&2
+  exit 1
+fi
+
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 GPU_TERMINAL_HOME="${GPU_TERMINAL_HOME:-$HOME/.local/gpu_terminal}"
 RUNTIME_DIR="${BONSAI_CPU_RUNTIME_DIR:-$GPU_TERMINAL_HOME/bonsai-cpu/runtime}"

@@ -28,6 +28,7 @@ def main():
         check(rc == 0, f"{name} parses (bash -n)")
         text = open(path).read()
         check("set -euo pipefail" in text, f"{name} fails fast")
+        check("BASH_VERSINFO" in text, f"{name} refuses bash 4.3 and older")
 
     # Both runtime scripts honour the same override, or builds and checkouts
     # would land in different places.
@@ -38,10 +39,11 @@ def main():
 
     # Nothing under version control may hard-code a home directory.
     needle = "/" + "home" + "/"          # not a literal, or this file trips it
-    tracked = [os.path.join(dp, f)
-               for dp, dns, fns in os.walk(REPO)
-               if ".git" not in dp
-               for f in fns]
+    tracked = []
+    for dp, dns, fns in os.walk(REPO):
+        dns[:] = [d for d in dns if d not in (".git", "__pycache__", ".work")]
+        tracked += [os.path.join(dp, f) for f in fns
+                    if not f.endswith(".pyc")]
     for path in tracked:
         try:
             text = open(path, errors="ignore").read()

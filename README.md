@@ -44,6 +44,12 @@ not `nproc`.
 | **Bonsai 8B** — Qwen3 dense, 1.16 GB | runs |
 | **Bonsai 27B** — Qwen3.5 hybrid-attention, 3.8 GB | phase 2: graph not yet verified under the pinned runtime |
 
+The commands that *execute* a model (`run`, `chat`, `serve`, `bench`)
+refuse the 27B until its graph is verified — `--model` included, because an
+unverified graph does not become verified by naming its file explicitly.
+The informational commands (`path`, `verify`) work on any model the store
+holds.
+
 Weights are resolved from the kilix-bonsai store
 (`KILIX_BONSAI_MODELS_DIR`, per-model `KILIX_BONSAI_BONSAI_8B_DIR`, default
 `~/.local/gpu_terminal/kilix-bonsai/models/`), or passed explicitly with
@@ -57,7 +63,8 @@ is the answer to a missing model, and every refusal here says so.
 bonsai-cpu run [-n N] [--greedy] PROMPT   # answer once and exit
 bonsai-cpu chat                           # interactive, model's own template
 bonsai-cpu serve [--port 8188]            # OpenAI-compatible llama-server
-bonsai-cpu bench                          # llama-bench, physical cores
+bonsai-cpu bench [-- FLAGS]               # llama-bench; its flags after --
+                                          #   e.g. bench -- -p 512 -n 128
 bonsai-cpu verify                         # sha256 against the pinned digest
 bonsai-cpu path                           # where the model resolved to
 bonsai-cpu doctor                         # what is present, what is missing
@@ -83,6 +90,10 @@ compiled binary is per-machine.
 
 A local llama.cpp clone can seed the checkout without re-downloading:
 `BONSAI_CPU_LLAMA_MIRROR=/path/to/llama.cpp bonsai-cpu build`.
+
+The shell scripts require bash 4.4+ and say so up front — bash ≤ 4.3
+mishandles empty arrays under `set -u`, and a version check that fails
+loudly beats a clone that dies halfway with an "unbound variable".
 
 ## Tests
 

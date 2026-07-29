@@ -3,6 +3,13 @@
 # checkout, so updating is a `git pull` rather than a reinstall.
 set -euo pipefail
 
+# Same floor as the scripts this installs a launcher for.
+if [ "${BASH_VERSINFO[0]:-0}" -lt 4 ] \
+    || { [ "${BASH_VERSINFO[0]}" -eq 4 ] && [ "${BASH_VERSINFO[1]}" -le 3 ]; }; then
+  printf 'bonsai-cpu: bash 4.4+ required (running %s)\n' "${BASH_VERSION:-unknown}" >&2
+  exit 1
+fi
+
 PREFIX="${BONSAI_CPU_PREFIX:-$HOME/.local}"
 BIN_DIR="$PREFIX/bin"
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
