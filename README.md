@@ -23,6 +23,11 @@ then "open a model" is what you came to do.
 | `kilix-bonsai-image` | Bonsai Image 4B | Prompt, reference image, seed, size and steps; a gallery that records what produced each result and can feed one back in |
 | `kilix-bonsai-speech` | VibeVoice ASR BitNet | Record or point at a WAV; transcript grows chunk by chunk; copy or write it out |
 
+All four draw through the shared panel chrome from `kilix-tui-utils` when it
+is installed, and fall back to a plain title and rule when it is not — so a
+bare checkout over `ssh` still runs, and every screen still renders to plain
+text for the tests.
+
 Which interface a model gets is declared by that model's `MODEL.json`
 (`runtime.kind`), not decided here — so a new model arrives with its own
 answer rather than needing the launcher changed.

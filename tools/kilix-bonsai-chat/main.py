@@ -21,7 +21,7 @@ sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
     "src"))
 
-from kilix_bonsai import catalog, screen, store, widgets   # noqa: E402
+from kilix_bonsai import catalog, chrome, screen, store, widgets  # noqa: E402
 from kilix_bonsai.runtime import chat                      # noqa: E402
 
 TITLE = "Kilix Bonsai Chat"
@@ -152,47 +152,42 @@ def transcript_lines(state: State, width: int) -> list[str]:
 
 def render(surface, state: State) -> None:
     height, width = surface.getmaxyx()
-    right = f"{state.status}"
-    screen.write(surface, 0, 0, f"{TITLE} — {state.model.title}")
-    screen.write(surface, 0, max(0, width - len(right) - 1), right)
-    screen.write(surface, 1, 0, "─" * max(0, width - 1))
+    if state.streaming:
+        elapsed = time.monotonic() - state.started
+        foot = (f"generating… {state.tokens} chunks, "
+                f"{state.tokens / elapsed if elapsed else 0:.0f}/s · Esc stops")
+    elif not state.ready:
+        foot = state.status
+    else:
+        foot = ("Enter send · Ctrl-R new · Ctrl-S save · ? help · Ctrl-Q quit "
+                f"· temp {state.temperature:.1f}")
+    page = chrome.page(TITLE, [state.model.title], node="CHAT 001")
+    page.render(surface, 0, footer=foot, status=state.status[:38])
+    top, left, well, well_width = page.content_box()
 
     if state.error:
-        for index, line in enumerate(widgets.wrap(state.error, width - 2)):
-            screen.write(surface, 3 + index, 1, line)
-        screen.write(surface, height - 1, 0, "q quit")
+        for index, line in enumerate(widgets.wrap(state.error, well_width - 2)):
+            screen.write(surface, top + index, left + 1, line)
         return
 
     if state.show_help:
         for index, line in enumerate(HELP):
-            screen.write(surface, 3 + index, 2, line)
-        screen.write(surface, height - 1, 0, "any key returns")
+            screen.write(surface, top + index, left + 1, line)
         return
 
-    body_height = max(1, height - 5)
-    lines = transcript_lines(state, width - 1)
+    body_height = max(1, well - 2)
+    lines = transcript_lines(state, well_width - 1)
     first = state.scroll.clamp(len(lines), body_height)
     for index, line in enumerate(lines[first:first + body_height]):
-        screen.write(surface, 2 + index, 0, line)
+        screen.write(surface, top + index, left, line)
 
-    screen.write(surface, height - 3, 0, "─" * max(0, width - 1))
-    visible, cursor = state.editor.view(max(1, width - 3))
-    screen.write(surface, height - 2, 0, "> " + visible)
+    visible, cursor = state.editor.view(max(1, well_width - 3))
+    screen.write(surface, top + body_height, left, "> " + visible)
 
-    if state.streaming:
-        elapsed = time.monotonic() - state.started
-        rate = state.tokens / elapsed if elapsed > 0 else 0.0
-        footer = (f"generating… {state.tokens} chunks, {rate:.0f}/s · "
-                  "Esc stops")
-    elif not state.ready:
-        footer = state.status
-    else:
-        footer = (f"Enter send · Ctrl-R new · Ctrl-S save · ? help · "
-                  f"Ctrl-Q quit · temp {state.temperature:.1f}")
-    screen.write(surface, height - 1, 0, footer)
     if state.stdscr is not None and state.ready and not state.streaming:
         try:
-            state.stdscr.move(height - 2, min(width - 1, 2 + cursor))
+            state.stdscr.move(top + body_height,
+                              min(width - 1, left + 2 + cursor))
             curses.curs_set(1)
         except curses.error:
             pass

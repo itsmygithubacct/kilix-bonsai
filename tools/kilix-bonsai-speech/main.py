@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
     "src"))
 
-from kilix_bonsai import catalog, screen, widgets                # noqa: E402
+from kilix_bonsai import catalog, chrome, screen, widgets       # noqa: E402
 from kilix_bonsai.runtime import asr                             # noqa: E402
 
 TITLE = "Kilix Bonsai Speech"
@@ -152,50 +152,44 @@ HELP = [
 
 def render(surface, state: State) -> None:
     height, width = surface.getmaxyx()
-    right = state.status[:max(0, width // 2)]
-    screen.write(surface, 0, 0, f"{TITLE} — {state.model.title}")
-    screen.write(surface, 0, max(0, width - len(right) - 1), right)
-    screen.write(surface, 1, 0, "─" * max(0, width - 1))
+    foot = ("r record · Enter transcribe · y copy · w write · ? help "
+            "· Ctrl-Q quit")
+    if state.working:
+        foot = "transcribing… " + foot
+    page = chrome.page(TITLE, [state.model.title], node="SPEECH 001")
+    page.render(surface, 0, footer=foot, status=state.status[:38])
+    top, left, well, well_width = page.content_box()
 
     if state.show_help:
         for index, line in enumerate(HELP):
-            screen.write(surface, 3 + index, 2, line)
-        screen.write(surface, height - 1, 0, "any key returns")
+            screen.write(surface, top + index, left + 1, line)
         return
 
     if not state.ready:
         for index, line in enumerate(widgets.wrap(
-                state.engine.check() or "", width - 2)):
-            screen.write(surface, 3 + index, 1, line)
-        screen.write(surface, 6, 1,
+                state.engine.check() or "", well_width - 2)):
+            screen.write(surface, top + index, left + 1, line)
+        screen.write(surface, top + 3, left + 1,
                      "Download it from the model store: kilix bonsai")
-        screen.write(surface, height - 1, 0, "Ctrl-Q quit")
         return
 
     label = "wav path" if state.field == "file" else "hotwords"
     visible, cursor = state.editor.view(max(1, width - 14))
-    screen.write(surface, 3, 0, f"> {label:<10} {visible}")
+    screen.write(surface, top, left, f"> {label:<10} {visible}")
     mode = "greedy" if state.engine.greedy else "sampled"
-    screen.write(surface, 4, 0,
+    screen.write(surface, top + 1, left,
                  f"  decoding   {mode}, {state.engine.threads} threads")
     if state.recording is not None:
-        screen.write(surface, 5, 0,
+        screen.write(surface, top + 2, left,
                      f"  ● recording {state.recording.seconds:.1f}s")
 
-    screen.write(surface, 7, 0, "─" * max(0, width - 1))
     body = state.partial or state.transcript
-    lines = widgets.wrap(body, max(1, width - 2)) if body else \
+    lines = widgets.wrap(body, max(1, well_width - 2)) if body else \
         ["(nothing transcribed yet — press r to record, or type a path)"]
-    body_height = max(1, height - 10)
+    body_height = max(1, well - 4)
     first = state.scroll.clamp(len(lines), body_height)
     for index, line in enumerate(lines[first:first + body_height]):
-        screen.write(surface, 8 + index, 1, line)
-
-    footer = ("r record · Enter transcribe · y copy · w write · ? help "
-              "· Ctrl-Q quit")
-    if state.working:
-        footer = "transcribing… " + footer
-    screen.write(surface, height - 1, 0, footer[:width - 1])
+        screen.write(surface, top + 4 + index, left + 1, line)
 
 
 def handle(key: int, state: State) -> bool:

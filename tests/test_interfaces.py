@@ -316,3 +316,53 @@ class ChromeBridgeTest(unittest.TestCase):
                 self.assertLessEqual(len(line), 80)
         finally:
             chrome._CORE = saved
+
+
+class ChromeAdoptionTest(unittest.TestCase):
+    """Every interface draws through the shared chrome, both ways."""
+
+    TOOLS = ("kilix-bonsai-chat", "kilix-bonsai-image", "kilix-bonsai-speech")
+
+    def _state(self, name, module):
+        if name == "kilix-bonsai-chat":
+            return module.State(next(m for m in catalog.load()
+                                     if m.runtime.get("kind") == "chat"))
+        if name == "kilix-bonsai-image":
+            state = module.State(catalog.find("bonsai-image-4b"))
+            state.load_field()
+            return state
+        return module.State(catalog.find("vibevoice-asr-bitnet"))
+
+    def test_each_tool_titles_itself_through_the_chrome(self) -> None:
+        for name in self.TOOLS:
+            module = load_tool(name)
+            text = screen.render_to_text(module.render,
+                                         self._state(name, module),
+                                         height=26, width=96)
+            # Page.title upper-cases; the fallback does not. Either is fine,
+            # but the tool's name must be on screen in both.
+            self.assertIn(module.TITLE.split()[-1].upper(), text.upper(), name)
+
+    def test_each_tool_still_clips_at_every_size(self) -> None:
+        for name in self.TOOLS:
+            module = load_tool(name)
+            state = self._state(name, module)
+            for height, width in ((8, 20), (24, 80), (40, 140)):
+                text = screen.render_to_text(module.render, state,
+                                             height=height, width=width)
+                for line in text.splitlines():
+                    self.assertLessEqual(len(line), width, f"{name} {width}")
+
+    def test_each_tool_renders_with_the_shared_core_absent(self) -> None:
+        from kilix_bonsai import chrome
+        saved = chrome._CORE
+        chrome._CORE = False
+        try:
+            for name in self.TOOLS:
+                module = load_tool(name)
+                text = screen.render_to_text(module.render,
+                                             self._state(name, module),
+                                             height=24, width=80)
+                self.assertTrue(text.strip(), f"{name} drew nothing")
+        finally:
+            chrome._CORE = saved

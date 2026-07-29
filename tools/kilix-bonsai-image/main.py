@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
     "src"))
 
-from kilix_bonsai import catalog, screen, widgets                # noqa: E402
+from kilix_bonsai import catalog, chrome, screen, widgets       # noqa: E402
 from kilix_bonsai.runtime import image as backend                # noqa: E402
 
 TITLE = "Kilix Bonsai Image"
@@ -189,8 +189,9 @@ HELP = [
 ]
 
 
-def render_compose(surface, state: State) -> None:
-    height, width = surface.getmaxyx()
+def render_compose(surface, state: State, top: int, left: int,
+                   well: int, width: int) -> None:
+    height = top + well
     values = {
         "prompt": state.request.prompt or "(required)",
         "reference": state.request.input_image or "(none)",
@@ -200,7 +201,7 @@ def render_compose(surface, state: State) -> None:
         "steps": "default" if state.request.steps is None
                  else str(state.request.steps),
     }
-    row = 3
+    row = top
     for index, name in enumerate(FIELDS):
         marker = ">" if index == state.field else " "
         if index == state.field:
@@ -208,67 +209,63 @@ def render_compose(surface, state: State) -> None:
             shown = visible
         else:
             shown = values[name]
-        screen.write(surface, row, 0, f"{marker} {name:<10} {shown}")
+        screen.write(surface, row, left, f"{marker} {name:<10} {shown}")
         row += 1
     row += 1
     preset = backend.PRESETS[state.preset][0]
-    screen.write(surface, row, 0,
+    screen.write(surface, row, left,
                  f"  backend    {state.request.backend}    preset  {preset}")
     row += 2
     if state.gallery.entries:
-        screen.write(surface, row, 0,
+        screen.write(surface, row, left,
                      f"  {len(state.gallery.entries)} generations · "
                      "g for the gallery")
     if state.running:
         elapsed = time.monotonic() - state.started
-        screen.write(surface, height - 3, 0,
+        screen.write(surface, min(row + 2, height - 1), left,
                      f"  generating… {elapsed:.0f}s elapsed")
 
 
-def render_gallery(surface, state: State) -> None:
-    height, width = surface.getmaxyx()
+def render_gallery(surface, state: State, top: int, left: int,
+                   well: int, width: int) -> None:
     if not state.gallery.entries:
-        screen.write(surface, 3, 0, "  nothing generated yet")
+        screen.write(surface, top, left, "  nothing generated yet")
         return
-    visible = max(1, height - 7)
+    visible = max(1, well - 2)
     start = max(0, min(state.selected - visible // 2,
                        max(0, len(state.gallery.entries) - visible)))
-    row = 3
+    row = top
     for index, entry in enumerate(
             state.gallery.entries[start:start + visible]):
         position = start + index
         marker = ">" if position == state.selected else " "
-        screen.write(surface, row, 0,
+        screen.write(surface, row, left,
                      f"{marker} {os.path.basename(entry.path):<22.22} "
                      f"{entry.request.size:>9}  "
                      f"{entry.request.prompt[:width - 40]}")
         row += 1
     entry = state.gallery.entries[state.selected]
-    screen.write(surface, height - 4, 0, "─" * max(0, width - 1))
-    screen.write(surface, height - 3, 0,
+    screen.write(surface, top + well - 1, left,
                  f"  seed {entry.request.seed} · steps {entry.request.steps} · "
                  f"reference {os.path.basename(entry.request.input_image or '') or 'none'}")
 
 
 def render(surface, state: State) -> None:
-    height, width = surface.getmaxyx()
-    right = state.status[:max(0, width // 2)]
-    screen.write(surface, 0, 0, f"{TITLE} — {state.model.title}")
-    screen.write(surface, 0, max(0, width - len(right) - 1), right)
-    screen.write(surface, 1, 0, "─" * max(0, width - 1))
+    footer = ("↑/↓ move · u reuse · r as reference · o open · g compose"
+              if state.view == "gallery" else
+              "Tab field · Enter generate · Ctrl-P preset · Ctrl-B backend"
+              " · g gallery · ? help")
+    page = chrome.page(TITLE, [state.model.title], node="IMAGE 001")
+    page.render(surface, 0, footer=footer, status=state.status[:38])
+    top, left, well, well_width = page.content_box()
     if state.show_help:
         for index, line in enumerate(HELP):
-            screen.write(surface, 3 + index, 2, line)
-        screen.write(surface, height - 1, 0, "any key returns")
+            screen.write(surface, top + index, left + 1, line)
         return
     if state.view == "gallery":
-        render_gallery(surface, state)
-        footer = "↑/↓ move · u reuse · r as reference · o open · g compose · Ctrl-Q quit"
+        render_gallery(surface, state, top, left, well, well_width)
     else:
-        render_compose(surface, state)
-        footer = ("Tab field · Enter generate · Ctrl-P preset · Ctrl-B backend"
-                  " · g gallery · ? help")
-    screen.write(surface, height - 1, 0, footer[:width - 1])
+        render_compose(surface, state, top, left, well, well_width)
 
 
 def handle(key: int, state: State) -> bool:
