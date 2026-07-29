@@ -200,11 +200,34 @@ class Session:
         # chosen for exactly this hardware.
         env = [f"BONSAI_27B_CTX_SIZE={self.context}",
                f"BONSAI_CONTEXT_SIZE={self.context}"]
-        local = ["env", *env, binary, prompt, "-n", str(tokens)]
-        # 8B's wrapper defaults to the integer engine, so a regular session
-        # has to name the engine itself; 27B's wrapper already does.
-        if self.choice.model_id == "bonsai-8b":
-            local += ["--engine", REGULAR_ENGINE]
+        if self.choice.model_id != "bonsai-8b":
+            return_local = ["env", *env, binary, prompt, "-n", str(tokens)]
+            local = return_local
+        else:
+            # 8B has no regular wrapper — `bonsai-cli` hardcodes the integer
+            # engine's flags and exits 1 when handed --engine. So the shared
+            # CLI is invoked directly with the same arguments the 27B wrapper
+            # builds for itself, pointed at the 8B weights.
+            home = os.environ.get("KILIX_BONSAI_NOTARY_HOME", "")
+            binaries = os.environ.get("KILIX_BONSAI_PRISM_BIN", "")
+            gguf = os.environ.get("KILIX_BONSAI_8B_GGUF", "")
+            if not (home and binaries and gguf):
+                raise ChatError(
+                    "regular 8B needs KILIX_BONSAI_NOTARY_HOME, "
+                    "KILIX_BONSAI_PRISM_BIN and KILIX_BONSAI_8B_GGUF set — it "
+                    "has no wrapper of its own, unlike 27B")
+            # Absolute PYTHONPATH: the vendor wrapper gets away with a
+            # relative "src" because it cd's first, and this does not.
+            engine_root = os.path.join(os.path.dirname(binary), "bonsai")
+            local = ["env", f"BONSAI_NOTARY_HOME={home}",
+                     f"PYTHONPATH={os.path.join(engine_root, 'src')}",
+                     f"LD_LIBRARY_PATH={binaries}", *env,
+                     os.path.join(engine_root, ".venv", "bin", "python"),
+                     "-m", "trinote.cli.run_bonsai_cli",
+                     "--engine", REGULAR_ENGINE, "--no-receipt",
+                     "--gguf", gguf, "--bin-dir", binaries,
+                     "--n-gpu-layers", "99", "--flash-attn",
+                     "-n", str(tokens), "-p", prompt]
         if self.choice.backend == LOCAL:
             return local
         if not REMOTE_HOST:
