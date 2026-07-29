@@ -104,12 +104,14 @@ def main():
         check(r.returncode == 1 and "mismatch" in r.stderr,
               f"verify fails on wrong bytes: {r.stderr!r}")
 
-        # run/chat without a runtime say how to get one.
+        # run/chat without a runtime say how to get one — the TUI path and
+        # the --plain escape hatch both refuse on stderr, before curses.
         with open(gguf, "wb") as fh:
             fh.truncate(SIZE_8B)
-        r = run(["run", "hello"], base)
-        check(r.returncode == 2 and "bonsai-cpu build" in r.stderr,
-              f"missing runtime points at build: {r.stderr!r}")
+        for argv in (["run", "hello"], ["chat"], ["chat", "--plain"]):
+            r = run(argv, base)
+            check(r.returncode == 2 and "bonsai-cpu build" in r.stderr,
+                  f"{argv} without runtime points at build: {r.stderr!r}")
 
         # doctor reports rather than crashes, whatever the machine has.
         r = run(["doctor"], base)

@@ -98,5 +98,162 @@ class WrapScrollTest(unittest.TestCase):
         self.assertEqual(view.clamp(total=120, height=10), 110)
 
 
+import curses            # noqa: E402
+import tempfile          # noqa: E402
+
+from bonsai_cpu import chat_tui, convo   # noqa: E402
+
+
+class StubServer:
+    def __init__(self, model_id="bonsai-8b"):
+        self.model_id = model_id
+        self.aborted = 0
+
+    def abort(self):
+        self.aborted += 1
+
+    def stop(self):
+        pass
+
+
+def chat_state(tmp, model_id="bonsai-8b"):
+    state = chat_tui.State(model_id)
+    built = convo.new(model_id, directory=tmp)
+    built.name = "test chat"
+    built.messages = [
+        {"role": "user", "content": "hi **there**"},
+        {"role": "assistant", "content": "**Hello!**\n- one\n- two",
+         "reasoning": "let me think about this greeting",
+         "reasoning_tokens": 7,
+         "stats": {"prompt_n": 20, "predicted_n": 12,
+                   "predicted_per_second": 7.9}},
+    ]
+    state.convo = built
+    state.view = "chat"
+    state.server = StubServer(model_id)
+    return state
+
+
+class ChatRenderTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+
+    def render_all_sizes(self, state):
+        for height, width in ((8, 20), (24, 80), (60, 200)):
+            text = screen.render_to_text(chat_tui.render, state,
+                                         height=height, width=width)
+            for line in text.splitlines():
+                self.assertLessEqual(len(line), width,
+                                     f"{state.view} at {width}")
+        return screen.render_to_text(chat_tui.render, state)
+
+    def test_every_view_clips_at_any_size(self):
+        state = chat_state(self.tmp.name)
+        state.conversations = [state.convo]
+        for view in ("chat", "list", "picker", "params", "help"):
+            state.view = view
+            self.render_all_sizes(state)
+        state.view = "chat"
+        state.loading = "loading Bonsai 27B… 12s"
+        self.render_all_sizes(state)
+        state.loading = ""
+        state.error = "llama-server exited while loading (status 3)"
+        self.render_all_sizes(state)
+
+    def test_thinking_is_folded_until_revealed(self):
+        state = chat_state(self.tmp.name)
+        folded = self.render_all_sizes(state)
+        self.assertIn("thought for 7 tokens", folded)
+        self.assertNotIn("let me think", folded)
+        state.show_thinking = True
+        revealed = self.render_all_sizes(state)
+        self.assertIn("let me think", revealed)
+
+    def test_status_line_reports_rate_and_context(self):
+        state = chat_state(self.tmp.name)
+        frame = self.render_all_sizes(state)
+        self.assertIn("7.9 tok/s", frame)
+        self.assertIn("32/8192", frame)
+
+    def test_prompt_progress_wins_the_status_line(self):
+        state = chat_state(self.tmp.name)
+        state.progress = {"processed": 812, "total": 2313, "cache": 1501}
+        frame = self.render_all_sizes(state)
+        self.assertIn("812/2313", frame)
+        self.assertIn("cached 1501", frame)
+
+
+class ChatKeysTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.ensured = []
+        self.saved_ensure = chat_tui._ensure_server
+        chat_tui._ensure_server = (
+            lambda state, model_id: self.ensured.append(model_id))
+        self.addCleanup(setattr, chat_tui, "_ensure_server",
+                        self.saved_ensure)
+
+    def test_esc_cancels_while_streaming_and_stays(self):
+        state = chat_state(self.tmp.name)
+        state.streaming = True
+        self.assertTrue(chat_tui.handle(27, state))
+        self.assertTrue(state.cancel)
+        self.assertEqual(state.server.aborted, 1)
+        self.assertEqual(state.view, "chat")
+
+    def test_esc_idle_returns_to_the_list(self):
+        state = chat_state(self.tmp.name)
+        self.assertTrue(chat_tui.handle(27, state))
+        self.assertEqual(state.view, "list")
+
+    def test_think_toggle_flips_27b_and_refuses_8b(self):
+        state = chat_state(self.tmp.name, "bonsai-27b")
+        chat_tui.handle(chat_tui.CTRL_T, state)
+        self.assertTrue(state.convo.think)
+        eight = chat_state(self.tmp.name)
+        chat_tui.handle(chat_tui.CTRL_T, eight)
+        self.assertFalse(eight.convo.think)
+        self.assertIn("not a thinking model", eight.status)
+
+    def test_picker_switches_model_and_restarts_the_server(self):
+        state = chat_state(self.tmp.name)
+        chat_tui.handle(chat_tui.CTRL_O, state)
+        self.assertEqual(state.view, "picker")
+        state.selected = sorted(chat_tui.models.MODELS).index("bonsai-27b")
+        chat_tui.handle(ord("\n"), state)
+        self.assertEqual(state.convo.model_id, "bonsai-27b")
+        self.assertEqual(self.ensured, ["bonsai-27b"])
+
+    def test_params_rejects_a_word_as_temperature(self):
+        state = chat_state(self.tmp.name)
+        chat_tui.handle(chat_tui.CTRL_P, state)
+        state.param_index = chat_tui.PARAM_FIELDS.index("temperature")
+        chat_tui.handle(ord("\n"), state)          # open the editor
+        for ch in "abc":
+            chat_tui.handle(ord(ch), state)
+        state.param_editor.set("abc")
+        chat_tui.handle(ord("\n"), state)          # commit
+        self.assertEqual(state.convo.params["temperature"], 0.6)
+        self.assertIn("not a number", state.status)
+
+    def test_ctrl_q_quits_from_anywhere(self):
+        state = chat_state(self.tmp.name)
+        for view in ("chat", "list", "picker", "params", "help"):
+            state.view = view
+            self.assertFalse(chat_tui.handle(chat_tui.CTRL_Q, state))
+
+    def test_help_opens_only_from_an_empty_editor(self):
+        state = chat_state(self.tmp.name)
+        chat_tui.handle(ord("?"), state)
+        self.assertEqual(state.view, "help")
+        state.view = "chat"
+        state.editor.set("what is 2+2?")
+        chat_tui.handle(ord("?"), state)
+        self.assertEqual(state.view, "chat")
+        self.assertIn("?", state.editor.text)
+
+
 if __name__ == "__main__":
     unittest.main()
