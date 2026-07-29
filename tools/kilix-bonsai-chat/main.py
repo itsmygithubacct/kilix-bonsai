@@ -22,7 +22,7 @@ sys.path.insert(0, os.path.join(
     "src"))
 
 from kilix_bonsai import catalog, screen, store, widgets   # noqa: E402
-from kilix_bonsai.runtime import llama                     # noqa: E402
+from kilix_bonsai.runtime import chat                      # noqa: E402
 
 TITLE = "Kilix Bonsai Chat"
 
@@ -31,7 +31,7 @@ class State:
     def __init__(self, model: catalog.Model) -> None:
         self.model = model
         runtime = model.runtime
-        self.messages: list[llama.Message] = []
+        self.messages: list[chat.Turn] = []
         self.system = runtime.get("system", "You are a helpful assistant.")
         self.editor = widgets.Editor()
         self.scroll = widgets.Scrollback()
@@ -45,44 +45,47 @@ class State:
         self.show_help = False
         self.started = 0.0
         self.tokens = 0
-        variant = model.default_variant
-        self.model_path = os.path.join(variant.directory(model.store),
-                                       runtime.get("model_file", ""))
-        self.server = llama.Server(
-            model_path=self.model_path,
-            context=int(runtime.get("context") or 4096))
+        # The GPU is picked from what is measured free right now, not from a
+        # default, and the choice explains itself so the header can say which
+        # card and why this model rather than the other.
+        self.choice = chat.choose(model.id)
+        self.session = chat.Session(self.choice,
+                                    context=int(runtime.get("context") or 4096))
 
     # -- lifecycle ----------------------------------------------------------
 
     def boot(self) -> None:
-        """Start the server on a thread so the UI paints while it loads."""
-        def work() -> None:
-            try:
-                self.server.start(on_progress=self._progress)
-                self.status = "ready"
-            except llama.RuntimeError_ as error:
-                self.error = str(error)
-                self.status = "unavailable"
-        threading.Thread(target=work, daemon=True).start()
+        """Resolve a backend. No model is loaded until a turn is sent.
+
+        Deliberately nothing is claimed here: the card is shared with image
+        generation, so opening the UI must not take it.
+        """
+        if not self.choice.usable:
+            self.error = self.choice.reason
+            self.status = "unavailable"
+            return
+        if self.choice.model_id != self.model.id:
+            self.model = catalog.find(self.choice.model_id)
+        self.status = f"ready · {self.choice.backend} · {self.choice.reason}"
 
     def _progress(self, message: str) -> None:
         self.status = message
 
     def shutdown(self) -> None:
         self.cancel = True
-        self.server.stop()
+        self.session.release()
 
     @property
     def ready(self) -> bool:
-        return self.status == "ready" and not self.error
+        return self.choice.usable and not self.error
 
     # -- conversation -------------------------------------------------------
 
     def send(self, text: str) -> None:
         if not text.strip() or self.streaming or not self.ready:
             return
-        self.messages.append(llama.Message("user", text.strip()))
-        self.messages.append(llama.Message("assistant", ""))
+        self.messages.append(chat.Turn("user", text.strip()))
+        self.messages.append(chat.Turn("assistant", ""))
         self.streaming = True
         self.cancel = False
         self.tokens = 0
@@ -91,20 +94,17 @@ class State:
         threading.Thread(target=self._generate, daemon=True).start()
 
     def _generate(self) -> None:
-        conversation = [llama.Message("system", self.system)]
-        conversation += [m for m in self.messages if m.content or
-                         m is not self.messages[-1]]
+        """Run one turn, claiming the GPU only for its duration."""
         try:
-            for piece in self.server.stream_chat(
-                    conversation[:-1] if conversation[-1].role == "assistant"
-                    and not conversation[-1].content else conversation,
-                    temperature=self.temperature, top_p=self.top_p,
+            for piece in self.session.stream(
+                    self.messages[:-1], system=self.system,
                     should_stop=lambda: self.cancel):
                 self.messages[-1].content += piece
                 self.tokens += 1
-        except llama.RuntimeError_ as error:
+        except chat.ChatError as error:
             self.messages[-1].content += f"\n[{error}]"
         finally:
+            self.session.release()          # give the card back immediately
             self.streaming = False
             if self.cancel:
                 self.messages[-1].content += " […stopped]"

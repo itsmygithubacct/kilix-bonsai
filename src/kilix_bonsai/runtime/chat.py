@@ -20,6 +20,7 @@ minutes into a load rather than a refusal.
 from __future__ import annotations
 
 import os
+import shlex
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -111,6 +112,15 @@ def fits(model_id: str, free_mib: int | None) -> bool:
 
 
 @dataclass
+class Turn:
+    """One message. The vendor CLI is one-shot, so history is re-rendered
+    into a single prompt per turn rather than held by a server."""
+
+    role: str
+    content: str
+
+
+@dataclass
 class Choice:
     """Which model to open, on which backend, and why."""
 
@@ -167,18 +177,87 @@ class Session:
     process: subprocess.Popen | None = None
 
     def argv(self, prompt: str, tokens: int = 256) -> list[str]:
-        binary = launcher(self.choice.model_id)
+        # A remote launcher must be resolved on the machine that will run it.
+        # Probing this filesystem for it would fail on exactly the hosts that
+        # need the remote — the ones with no usable GPU and no runtime.
+        binary = (os.environ.get("KILIX_BONSAI_CHAT_LAUNCHER_DIR", "").rstrip("/")
+                  + "/" + {"bonsai-8b": "bonsai-cli",
+                           "bonsai-27b": "bonsai-27b-cli"}[self.choice.model_id]
+                  ) if self.choice.backend == REMOTE else launcher(
+                      self.choice.model_id)
+        if self.choice.backend == REMOTE and not os.environ.get(
+                "KILIX_BONSAI_CHAT_LAUNCHER_DIR"):
+            raise ChatError(
+                "remote chat needs KILIX_BONSAI_CHAT_LAUNCHER_DIR set to the "
+                "directory holding the launchers on the remote host")
         if binary is None:
             raise ChatError(
                 f"no vendor launcher for {self.choice.model_id}; install the "
                 "pinned runtime, or set KILIX_BONSAI_CHAT_LAUNCHER_DIR")
-        local = [binary, prompt, "-n", str(tokens)]
+        # The launcher auto-fits its context from the model's 262144-token
+        # maximum, which asks for a 16 GB KV cache and dies on an 8 GB card.
+        # Pinning it is not optional; the vendor's own default of 4096 is
+        # chosen for exactly this hardware.
+        env = [f"BONSAI_27B_CTX_SIZE={self.context}",
+               f"BONSAI_CONTEXT_SIZE={self.context}"]
+        local = ["env", *env, binary, prompt, "-n", str(tokens)]
+        # 8B's wrapper defaults to the integer engine, so a regular session
+        # has to name the engine itself; 27B's wrapper already does.
+        if self.choice.model_id == "bonsai-8b":
+            local += ["--engine", REGULAR_ENGINE]
         if self.choice.backend == LOCAL:
             return local
         if not REMOTE_HOST:
             raise ChatError("KILIX_BONSAI_CHAT_REMOTE is not set")
-        return ["ssh", REMOTE_HOST, " ".join(
-            subprocess.list2cmdline([part]) for part in local)]
+        # shlex.quote, not list2cmdline: the latter applies Windows quoting
+        # rules, which leaves a multi-word prompt to be word-split by the
+        # remote shell into arguments the launcher rejects.
+        return ["ssh", REMOTE_HOST,
+                " ".join(shlex.quote(part) for part in local)]
+
+    def render(self, history: list[Turn], system: str = "") -> str:
+        """Flatten a conversation into one prompt.
+
+        The launcher takes a prompt and exits; there is no server holding
+        state. Re-sending the transcript each turn is what makes the
+        conversation continuous, and is also why long ones get slower.
+        """
+        parts = [system.strip()] if system.strip() else []
+        for turn in history:
+            if not turn.content.strip():
+                continue
+            speaker = "User" if turn.role == "user" else "Assistant"
+            parts.append(f"{speaker}: {turn.content.strip()}")
+        parts.append("Assistant:")
+        return "\n\n".join(parts)
+
+    def stream(self, history: list[Turn], system: str = "", tokens: int = 512,
+               should_stop=None):
+        """Run one turn, yielding output as it arrives, then release the GPU.
+
+        The card is claimed for exactly this call. `should_stop` returning True
+        kills the process, which is the only way to abandon a turn when the
+        backend is a one-shot command rather than a cancellable request.
+        """
+        argv = self.argv(self.render(history, system), tokens)
+        try:
+            self.process = subprocess.Popen(
+                # stderr is merged, not discarded: the launcher reports why it
+                # refused there, and swallowing it turns every failure into a
+                # silent empty answer.
+                argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, errors="replace", bufsize=1,
+                start_new_session=True)
+        except OSError as error:
+            raise ChatError(str(error)) from error
+        assert self.process.stdout is not None
+        try:
+            for line in self.process.stdout:
+                if should_stop is not None and should_stop():
+                    return
+                yield line
+        finally:
+            self.release()
 
     def dry_run(self, prompt: str) -> list[str]:
         """Return the command without running it.
