@@ -1,11 +1,10 @@
 """The launcher routes correctly, and the three interfaces render safely.
 
 The properties worth pinning here are the ones that would strand someone:
-routing a model to the wrong interface, a launcher that hides its own art
-badly at small sizes, and any screen that raises rather than clips. Real
-inference is not exercised — that needs weights and minutes — but every screen
-is rendered, and every runtime is asked whether it could run rather than being
-assumed to.
+routing a model to the wrong interface, a layout that hides its content at a
+small size, and any screen that raises rather than clips. Real inference is
+not exercised — that needs weights and minutes — but every screen is rendered,
+and every runtime is asked whether it could run rather than being assumed to.
 """
 from __future__ import annotations
 
@@ -17,7 +16,7 @@ import unittest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 
-from kilix_bonsai import art, catalog, launcher, screen, widgets  # noqa: E402
+from kilix_bonsai import catalog, launcher, screen, widgets  # noqa: E402
 from kilix_bonsai.runtime import asr, image, llama                # noqa: E402
 
 
@@ -69,48 +68,6 @@ class RoutingTest(unittest.TestCase):
             self.assertTrue(detail)
 
 
-class ArtTest(unittest.TestCase):
-    def test_the_sprite_loads_and_has_shape(self) -> None:
-        width, cells = art.size()
-        self.assertEqual(width, 64)
-        self.assertEqual(cells, 32)
-
-    def test_it_scales_down_by_whole_numbers_only(self) -> None:
-        # A fractional scale on pixel art gives uneven pixel widths, which
-        # reads as a rendering fault rather than as a smaller sprite.
-        self.assertEqual(art.size(2), (32, 16))
-        self.assertEqual(art.size(4), (16, 8))
-        self.assertEqual(art.fit(70, 34), 1)
-        self.assertEqual(art.fit(40, 20), 2)
-        self.assertEqual(art.fit(8, 4), 0)          # no fit: draw nothing
-
-    def test_a_scaled_sprite_still_reads_as_a_shape(self) -> None:
-        for factor in (1, 2, 3):
-            text = art.as_text(factor)
-            self.assertGreater(text.count(art.UPPER_HALF), 40, factor)
-            self.assertIn(" ", text)
-
-    def test_the_silhouette_is_neither_blank_nor_solid(self) -> None:
-        # Both failures have happened: an index-based darkness test made the
-        # whole sprite solid ink, and a bad threshold makes it disappear.
-        text = art.as_text()
-        ink = text.count(art.UPPER_HALF)
-        space = sum(1 for character in text if character == " ")
-        self.assertGreater(ink, 100, "the sprite rendered blank")
-        self.assertGreater(space, 100, "the sprite rendered solid")
-
-    def test_luminance_not_index_decides_ink(self) -> None:
-        # 232 is the darkest grey-ramp entry: a high index, a near-black
-        # colour. Treating the index as brightness is the bug this catches.
-        self.assertFalse(art.is_ink(232))
-        self.assertTrue(art.is_ink(231))          # cube white
-        self.assertFalse(art.is_ink(16))          # cube black
-
-    def test_missing_assets_are_survivable(self) -> None:
-        saved = art.sprite.__wrapped__
-        self.assertTrue(callable(saved))
-
-
 class LauncherRenderTest(unittest.TestCase):
     def setUp(self) -> None:
         from kilix_bonsai import tui
@@ -126,17 +83,17 @@ class LauncherRenderTest(unittest.TestCase):
         self.assertIn("chat", text)
         self.assertIn("speech-to-text", text)
 
-    def test_the_art_appears_when_there_is_room(self) -> None:
+    def test_the_fallback_uses_the_kilix_shell_without_terminal_art(self) -> None:
         wide = screen.render_to_text(self.tui.render, self.state,
                                      height=30, width=100)
-        self.assertIn(art.UPPER_HALF, wide)
+        self.assertIn("KILIX TUI", wide)
+        self.assertIn("OPEN A MODEL", wide)
+        self.assertNotIn("▀", wide)
+        self.assertNotIn("BONSAI 001", wide)
 
-    def test_the_art_yields_to_the_list_when_there_is_not(self) -> None:
-        # A launcher that kept its decoration and dropped the thing you came
-        # to use would have the priority backwards.
+    def test_the_model_list_survives_a_narrow_terminal(self) -> None:
         narrow = screen.render_to_text(self.tui.render, self.state,
                                        height=24, width=60)
-        self.assertNotIn(art.UPPER_HALF, narrow)
         self.assertIn(self.state.models[0].title[:12], narrow)
 
 
@@ -307,6 +264,10 @@ class RuntimeProbeTest(unittest.TestCase):
         self.assertIn('getattr(state, "finished", False)',
                       inspect.getsource(screen.run))
 
+    def test_ctrl_q_is_not_swallowed_by_terminal_flow_control(self) -> None:
+        import inspect
+        self.assertIn("~termios.IXON", inspect.getsource(screen.run))
+
     def test_each_runtime_reports_availability_without_running_anything(self):
         self.assertIn(type(llama.server_binary()).__name__, ("str", "NoneType"))
         self.assertIn(type(asr.engine_binary()).__name__, ("str", "NoneType"))
@@ -354,39 +315,31 @@ class WidgetTest(unittest.TestCase):
         self.assertEqual(view.clamp(20, 10), 0)
 
 
-if __name__ == "__main__":
-    unittest.main()
+class StubCanvas:
+    def __init__(self, width, height):
+        self.width, self.height = width, height
+
+    def fill_rect(self, *args, **kwargs):
+        pass
+
+    def fill_circle(self, *args, **kwargs):
+        pass
+
+    def text(self, *args, **kwargs):
+        pass
+
+    def text_shadow(self, *args, **kwargs):
+        pass
+
+    def rgb_bytes(self):
+        return b"\0" * (self.width * self.height * 3)
+
+    def close(self):
+        pass
 
 
-class ChromeBridgeTest(unittest.TestCase):
-    """The shared theme is optional, and both paths must draw."""
-
-    def test_the_fallback_has_the_same_api_as_the_shared_page(self) -> None:
-        from kilix_bonsai import chrome
-        plain = chrome._PlainPage("T", ["a", "b"])
-        for name in ("measure", "content_box", "render", "spined"):
-            self.assertTrue(hasattr(plain, name), name)
-        self.assertFalse(plain.spined)
-
-    def test_the_launcher_draws_with_the_core_absent(self) -> None:
-        # A bare checkout over ssh must still render a usable launcher.
-        from kilix_bonsai import chrome, tui
-        saved = chrome._CORE
-        chrome._CORE = False
-        try:
-            state = tui.State()
-            state.screen = "launch"
-            text = screen.render_to_text(tui.render, state,
-                                         height=24, width=80)
-            self.assertIn("Choose what to open", text)
-            for line in text.splitlines():
-                self.assertLessEqual(len(line), 80)
-        finally:
-            chrome._CORE = saved
-
-
-class ChromeAdoptionTest(unittest.TestCase):
-    """Every interface draws through the shared chrome, both ways."""
+class VisualSystemTest(unittest.TestCase):
+    """Every task uses the Kilix shell in pixels and in text."""
 
     TOOLS = ("kilix-bonsai-chat", "kilix-bonsai-image", "kilix-bonsai-speech")
 
@@ -400,15 +353,15 @@ class ChromeAdoptionTest(unittest.TestCase):
             return state
         return module.State(catalog.find("vibevoice-asr-bitnet"))
 
-    def test_each_tool_titles_itself_through_the_chrome(self) -> None:
+    def test_each_text_fallback_uses_kilix_tui_without_node_chrome(self) -> None:
         for name in self.TOOLS:
             module = load_tool(name)
-            text = screen.render_to_text(module.render,
-                                         self._state(name, module),
-                                         height=26, width=96)
-            # Page.title upper-cases; the fallback does not. Either is fine,
-            # but the tool's name must be on screen in both.
-            self.assertIn(module.TITLE.split()[-1].upper(), text.upper(), name)
+            frame = screen.render_to_text(module.render,
+                                          self._state(name, module),
+                                          height=26, width=96)
+            self.assertIn("KILIX TUI", frame, name)
+            self.assertIn(module.PixelRenderer.area, frame, name)
+            self.assertNotIn(" 001", frame, name)
 
     def test_each_tool_still_clips_at_every_size(self) -> None:
         for name in self.TOOLS:
@@ -420,19 +373,19 @@ class ChromeAdoptionTest(unittest.TestCase):
                 for line in text.splitlines():
                     self.assertLessEqual(len(line), width, f"{name} {width}")
 
-    def test_each_tool_renders_with_the_shared_core_absent(self) -> None:
-        from kilix_bonsai import chrome
-        saved = chrome._CORE
-        chrome._CORE = False
-        try:
-            for name in self.TOOLS:
-                module = load_tool(name)
-                text = screen.render_to_text(module.render,
-                                             self._state(name, module),
-                                             height=24, width=80)
-                self.assertTrue(text.strip(), f"{name} drew nothing")
-        finally:
-            chrome._CORE = saved
+    @unittest.skipUnless(
+        os.path.isdir(os.path.expanduser(
+            "~/.local/gpu_terminal/sources/kilix-tui-utils/src/kilix_desk")),
+        "kilix-tui-utils is not alongside this checkout")
+    def test_each_pixel_interface_renders_the_shared_frame(self) -> None:
+        for name in self.TOOLS:
+            module = load_tool(name)
+            renderer = module.PixelRenderer(canvas_factory=StubCanvas)
+            frame = renderer.render(
+                self._state(name, module), 100, 30, (960, 560),
+                clock="12:00")
+            self.assertEqual(len(frame.rgb), 960 * 560 * 3, name)
+            self.assertGreaterEqual(len(renderer.hits), 4, name)
 
 
 class CpuFallbackTest(unittest.TestCase):
@@ -531,3 +484,7 @@ class CpuFallbackTest(unittest.TestCase):
         self.assertEqual(
             argv,
             ["/usr/bin/bonsai-cpu", "chat", "--model-id", "bonsai-27b"])
+
+
+if __name__ == "__main__":
+    unittest.main()

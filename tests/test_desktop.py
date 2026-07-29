@@ -186,7 +186,8 @@ class ModeSelectionTest(unittest.TestCase):
             self.assertEqual(status, 0)
             with open(path, encoding="utf-8") as handle:
                 frame = handle.read()
-        self.assertIn("KILIX BONSAI", frame)
+        self.assertIn("KILIX TUI", frame)
+        self.assertIn("BONSAI // DESKTOP", frame)
 
     def test_forced_graphics_without_the_shared_package_is_a_clean_error(self):
         error = io.StringIO()

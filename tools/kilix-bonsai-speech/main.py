@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
     "src"))
 
-from kilix_bonsai import catalog, chrome, screen, widgets       # noqa: E402
+from kilix_bonsai import catalog, pixel, screen, text, widgets  # noqa: E402
 from kilix_bonsai.runtime import asr                             # noqa: E402
 
 TITLE = "Kilix Bonsai Speech"
@@ -150,14 +150,156 @@ HELP = [
 ]
 
 
+class PixelRenderer(pixel.Renderer):
+    area = "SPEECH"
+
+    def navigation(self, state: State):
+        return (
+            ("Transcribe", None),
+            ("Record", ord("r")),
+            ("Copy", ord("y")),
+            ("Save", ord("w")),
+            ("Help", ord("?")),
+        )
+
+    def active_navigation(self, state: State) -> int:
+        if state.show_help:
+            return 4
+        if state.recording is not None:
+            return 1
+        return 0
+
+    def breadcrumb(self, state: State) -> str:
+        return f"Speech  /  {state.model.title}"
+
+    def footer(self, state: State) -> str:
+        if state.recording is not None:
+            return ("recording  ·  r stop and transcribe  ·  "
+                    "Ctrl-Q quit")
+        if state.working:
+            return ("transcribing  ·  PgUp/PgDn scroll  ·  "
+                    "Ctrl-Q quit")
+        return ("r record  ·  Enter transcribe  ·  Tab field  ·  "
+                "y copy  ·  w save  ·  Ctrl-G decoding  ·  ? help")
+
+    def snapshot(self, state: State):
+        recording = state.recording
+        return (
+            state.model.id, state.status, state.show_help, state.working,
+            None if recording is None else int(recording.seconds),
+            state.field, state.editor.text, state.editor.cursor,
+            state.transcript, state.partial,
+            state.scroll.offset, state.scroll.following,
+            state.engine.greedy, state.engine.threads,
+            state.engine.context_words,
+            tuple(state.history),
+        )
+
+    def body(self, body: pixel.Body, state: State) -> None:
+        left, top, right, bottom = body.box
+        if state.show_help:
+            self._help(body)
+            return
+        if not state.ready:
+            body.card(body.box, selected=True, danger=True)
+            pad = max(12, int(18 * body.scale))
+            body.text((left + pad, top + pad, right - pad,
+                       top + pad + 32), "MODEL UNAVAILABLE", size=18,
+                      bold=True, color=body.tango.RED_BRIGHT, valign="top")
+            problem = state.engine.check() or "The speech model is not ready."
+            body.wrapped((left + pad, top + pad + 40, right - pad,
+                          bottom - pad), problem + "\n\n"
+                         "Download it from the Models section.",
+                         size=12)
+            return
+
+        gap = max(8, int(12 * body.scale))
+        field_h = max(46, int(58 * body.scale))
+        meta_h = max(44, int(54 * body.scale))
+        field_box = (left, top, right, top + field_h)
+        meta_box = (left, field_box[3] + gap, right,
+                    field_box[3] + gap + meta_h)
+        transcript_box = (left, meta_box[3] + gap, right, bottom)
+
+        body.card(field_box, selected=True)
+        pad = max(10, int(14 * body.scale))
+        label = "WAV PATH" if state.field == "file" else "HOTWORDS"
+        body.text((left + pad, top, left + max(120, int(180 * body.scale)),
+                   field_box[3]), label, size=10, bold=True,
+                  color=body.tango.WHITE)
+        font = body.font(14)
+        split = left + max(120, int(180 * body.scale))
+        columns = max(1, (right - split - pad)
+                      // max(1, 8 * font.scale))
+        visible, _cursor = state.editor.view(columns)
+        body.text((split, top, right - pad, field_box[3]),
+                  visible or ("path to a WAV file"
+                              if state.field == "file"
+                              else "optional recognition hints"),
+                  size=14, color=(body.tango.WHITE if visible
+                                  else body.tango.GREY))
+
+        body.card(meta_box)
+        mode = "GREEDY" if state.engine.greedy else "SAMPLED"
+        body.text((left + pad, meta_box[1], right - pad, meta_box[3]),
+                  f"{mode}  ·  {state.engine.threads} THREADS",
+                  size=12, bold=True, color=body.tango.SILVER)
+        if state.recording is not None:
+            body.text((left + pad, meta_box[1], right - pad, meta_box[3]),
+                      f"RECORDING  {state.recording.seconds:.1f}s",
+                      size=12, bold=True, color=body.tango.RED_BRIGHT,
+                      align="right")
+        elif state.working:
+            body.text((left + pad, meta_box[1], right - pad, meta_box[3]),
+                      "TRANSCRIBING", size=12, bold=True,
+                      color=body.tango.BLUE_BRIGHT, align="right")
+
+        body.card(transcript_box)
+        inner = (transcript_box[0] + pad, transcript_box[1] + pad,
+                 transcript_box[2] - pad, transcript_box[3] - pad)
+        value = state.partial or state.transcript
+        if not value:
+            body.text(inner,
+                      "Nothing transcribed yet. Record audio or enter a WAV.",
+                      size=12, color=body.tango.GREY, align="center")
+            return
+        font = body.font(12)
+        columns = max(8, (inner[2] - inner[0])
+                      // max(1, 8 * font.scale))
+        lines = pixel._wrap(value, columns)
+        line_h = font.height + max(3, int(5 * body.scale))
+        capacity = max(1, (inner[3] - inner[1]) // line_h)
+        first = state.scroll.clamp(len(lines), capacity)
+        y = inner[1]
+        for line in lines[first:first + capacity]:
+            body.text((inner[0], y, inner[2], y + line_h), line, size=12,
+                      color=body.tango.SILVER)
+            y += line_h
+
+    @staticmethod
+    def _help(body: pixel.Body) -> None:
+        left, top, right, bottom = body.box
+        row_h = max(30, int(42 * body.scale))
+        for index, line in enumerate(HELP):
+            y = top + index * row_h
+            if y + row_h > bottom:
+                break
+            body.card((left, y, right, y + row_h))
+            body.text((left + 14, y, right - 14, y + row_h), line,
+                      size=12)
+
+
 def render(surface, state: State) -> None:
     height, width = surface.getmaxyx()
     foot = ("r record · Enter transcribe · y copy · w write · ? help "
             "· Ctrl-Q quit")
     if state.working:
         foot = "transcribing… " + foot
-    page = chrome.page(TITLE, [state.model.title], node="SPEECH 001")
-    page.render(surface, 0, footer=foot, status=state.status[:38])
+    page = text.page("SPEECH", state.model.title,
+                     ("Transcribe", "Record", "Copy", "Save", "Help"),
+                     4 if state.show_help else
+                     (1 if state.recording is not None else 0))
+    page.render(surface, footer=foot, status=state.status[:38])
     top, left, well, well_width = page.content_box()
 
     if state.show_help:
@@ -198,7 +340,8 @@ def handle(key: int, state: State) -> bool:
         return True
     if key == 17:                                    # Ctrl-Q
         if state.recording is not None:
-            state.recording.stop()
+            recording, state.recording = state.recording, None
+            recording.stop()
         return False
     if not state.ready:
         return True
@@ -236,7 +379,15 @@ def handle(key: int, state: State) -> bool:
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
-    positional = [a for a in argv if not a.startswith("-")]
+    positional: list[str] = []
+    skip = False
+    for argument in argv:
+        if skip:
+            skip = False
+        elif argument == "--screenshot":
+            skip = True
+        elif not argument.startswith("-"):
+            positional.append(argument)
     wanted = positional[0] if positional else None
     try:
         model = catalog.find(wanted) if wanted \
@@ -252,7 +403,15 @@ def main(argv: list[str] | None = None) -> int:
         with open(path, "w", encoding="utf-8") as target:
             target.write(screen.render_to_text(render, state) + "\n")
         return 0
-    return screen.run(render, state, handle=handle, tick_ms=200)
+    try:
+        status = pixel.run(
+            argv, PixelRenderer, state, handle, tick_ms=200,
+            command="kilix-bonsai-speech")
+        return (screen.run(render, state, handle=handle, tick_ms=200)
+                if status is None else status)
+    finally:
+        if state.recording is not None:
+            state.recording.stop()
 
 
 if __name__ == "__main__":

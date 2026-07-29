@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import curses
 import os
+import sys
+import termios
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
 
@@ -85,7 +87,7 @@ def render_to_text(render: Callable[[Any, Any], None], state: Any, *,
     return str(surface)
 
 
-def write(surface: Surface, y: int, x: int, text: str) -> None:
+def write(surface: Surface, y: int, x: int, text: str, attr: int = 0) -> None:
     """Draw one clipped line. Every screen goes through this.
 
     curses raises when a write reaches the last cell of the last row, and a
@@ -96,7 +98,7 @@ def write(surface: Surface, y: int, x: int, text: str) -> None:
     if not (0 <= y < height) or x >= width:
         return
     try:
-        surface.addstr(y, x, text[: max(0, width - x - 1)])
+        surface.addstr(y, x, text[: max(0, width - x - 1)], attr)
     except curses.error:                                 # pragma: no cover
         pass
 
@@ -118,6 +120,16 @@ def run(render: Callable[[Any, Any], None], state: Any, *,
         return 0
 
     def _loop(stdscr: Any) -> int:
+        # Curses cbreak leaves software flow control enabled. Without this,
+        # Ctrl-Q is consumed by the tty instead of reaching every task
+        # interface's documented quit handler.
+        try:
+            fd = sys.stdin.fileno()
+            attributes = termios.tcgetattr(fd)
+            attributes[0] &= ~termios.IXON
+            termios.tcsetattr(fd, termios.TCSANOW, attributes)
+        except (OSError, ValueError, termios.error):
+            pass
         curses.curs_set(0)
         stdscr.keypad(True)
         if curses.has_colors():

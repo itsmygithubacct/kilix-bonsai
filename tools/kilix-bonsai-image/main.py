@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
     "src"))
 
-from kilix_bonsai import catalog, chrome, screen, widgets       # noqa: E402
+from kilix_bonsai import catalog, pixel, screen, text, widgets  # noqa: E402
 from kilix_bonsai.runtime import image as backend                # noqa: E402
 
 TITLE = "Kilix Bonsai Image"
@@ -189,6 +189,186 @@ HELP = [
 ]
 
 
+class PixelRenderer(pixel.Renderer):
+    area = "IMAGES"
+
+    def navigation(self, state: State):
+        return (
+            ("Compose", "compose"),
+            ("Gallery", "gallery"),
+            ("Backend", 2),              # Ctrl-B
+            ("Help", ord("?")),
+        )
+
+    def active_navigation(self, state: State) -> int:
+        if state.show_help:
+            return 3
+        return 1 if state.view == "gallery" else 0
+
+    def breadcrumb(self, state: State) -> str:
+        view = "Gallery" if state.view == "gallery" else "Compose"
+        return f"Images  /  {view}  /  {state.model.title}"
+
+    def footer(self, state: State) -> str:
+        if state.running:
+            return (f"generating {time.monotonic() - state.started:.0f}s  ·  "
+                    "Ctrl-Q quit")
+        if state.view == "gallery":
+            return ("Up/Down select  ·  u reuse  ·  r reference  ·  "
+                    "o open  ·  g compose")
+        return ("Tab next field  ·  Enter generate  ·  Ctrl-P preset  ·  "
+                "Ctrl-B backend  ·  g gallery  ·  ? help")
+
+    def snapshot(self, state: State):
+        request = state.request
+        return (
+            state.model.id, state.status, state.view, state.show_help,
+            state.running,
+            int(time.monotonic() - state.started) if state.running else 0,
+            state.field, state.preset, state.selected,
+            state.editor.text, state.editor.cursor,
+            request.prompt, request.input_image, request.width,
+            request.height, request.seed, request.steps, request.backend,
+            tuple(sorted(state.backends.items())),
+            tuple((entry.path, entry.request.prompt, entry.request.size)
+                  for entry in state.gallery.entries),
+        )
+
+    def activate(self, action, state: State, handle) -> bool:
+        if action == "compose":
+            state.view = "compose"
+            state.show_help = False
+            return True
+        if action == "gallery":
+            state.view = "gallery"
+            state.show_help = False
+            return True
+        if isinstance(action, tuple) and action[0] == "field":
+            state.commit_field()
+            state.field = action[1]
+            state.load_field()
+            return True
+        if isinstance(action, tuple) and action[0] == "gallery":
+            state.selected = action[1]
+            return True
+        return super().activate(action, state, handle)
+
+    def body(self, body: pixel.Body, state: State) -> None:
+        if state.show_help:
+            self._help(body)
+        elif state.view == "gallery":
+            self._gallery(body, state)
+        else:
+            self._compose(body, state)
+
+    def _compose(self, body: pixel.Body, state: State) -> None:
+        left, top, right, bottom = body.box
+        gap = max(6, int(9 * body.scale))
+        summary_h = max(48, int(64 * body.scale))
+        fields_bottom = bottom - summary_h - gap
+        row_h = max(34, (fields_bottom - top)
+                    // max(1, len(FIELDS)))
+        values = {
+            "prompt": state.request.prompt or "Describe an image",
+            "reference": state.request.input_image or "None",
+            "size": state.request.size,
+            "seed": "Random" if state.request.seed is None
+                    else str(state.request.seed),
+            "steps": "Default" if state.request.steps is None
+                     else str(state.request.steps),
+        }
+        for index, name in enumerate(FIELDS):
+            y = top + index * row_h
+            row = (left, y + 2, right, min(fields_bottom, y + row_h - 3))
+            selected = index == state.field
+            body.card(row, selected=selected)
+            body.hits.append((("field", index), row))
+            pad = max(10, int(14 * body.scale))
+            split = left + max(110, int((right - left) * 0.24))
+            body.text((left + pad, row[1], split, row[3]), name.upper(),
+                      size=10, bold=True,
+                      color=(body.tango.WHITE if selected
+                             else body.tango.GREY))
+            if selected:
+                font = body.font(14)
+                columns = max(1, (right - split - pad)
+                              // max(1, 8 * font.scale))
+                editing = state.editor.view(columns)[0]
+                value = editing or values[name]
+            else:
+                editing = ""
+                value = values[name]
+            body.text((split, row[1], right - pad, row[3]), value,
+                      size=14, color=(body.tango.WHITE if editing
+                                      else body.tango.SILVER))
+
+        summary = (left, bottom - summary_h, right, bottom)
+        mid = left + (right - left - gap) // 2
+        backend_box = (left, summary[1], mid, bottom)
+        preset_box = (mid + gap, summary[1], right, bottom)
+        body.card(backend_box)
+        body.card(preset_box)
+        pad = max(10, int(14 * body.scale))
+        body.text((left + pad, summary[1] + 4, mid - pad,
+                   summary[1] + 24), "BACKEND", size=10, bold=True,
+                  color=body.tango.GREY, valign="top")
+        body.text((left + pad, summary[1] + 20, mid - pad, bottom - 3),
+                  state.request.backend, size=16, bold=True,
+                  color=body.tango.WHITE)
+        preset = backend.PRESETS[state.preset][0]
+        body.text((mid + gap + pad, summary[1] + 4, right - pad,
+                   summary[1] + 24), "PRESET", size=10, bold=True,
+                  color=body.tango.GREY, valign="top")
+        body.text((mid + gap + pad, summary[1] + 20, right - pad,
+                   bottom - 3), preset, size=16, bold=True,
+                  color=body.tango.WHITE)
+        if state.running:
+            body.draw.fill((left, bottom - max(3, int(4 * body.scale)),
+                            right, bottom), body.tango.BLUE_BRIGHT)
+
+    def _gallery(self, body: pixel.Body, state: State) -> None:
+        left, top, right, bottom = body.box
+        if not state.gallery.entries:
+            body.text(body.box,
+                      "Nothing generated yet. Choose Compose to begin.",
+                      size=12, color=body.tango.GREY, align="center")
+            return
+        row_h = max(38, int(52 * body.scale))
+        capacity = max(1, (bottom - top) // row_h)
+        start = max(0, min(state.selected - capacity + 1,
+                           len(state.gallery.entries) - capacity))
+        for line, entry in enumerate(
+                state.gallery.entries[start:start + capacity]):
+            index = start + line
+            y = top + line * row_h
+            row = (left, y + 2, right, y + row_h - 3)
+            selected = index == state.selected
+            body.card(row, selected=selected)
+            body.hits.append((("gallery", index), row))
+            pad = max(10, int(14 * body.scale))
+            body.text((left + pad, row[1], right - pad, row[3]),
+                      os.path.basename(entry.path), size=14,
+                      bold=selected,
+                      color=(body.tango.WHITE if selected
+                             else body.tango.SILVER))
+            hint = f"{entry.request.size}  ·  seed {entry.request.seed}"
+            body.text((left + pad, row[1], right - pad, row[3]), hint,
+                      size=10, color=(body.tango.WHITE if selected
+                                      else body.tango.GREY), align="right")
+
+    @staticmethod
+    def _help(body: pixel.Body) -> None:
+        left, top, right, bottom = body.box
+        row_h = max(30, int(42 * body.scale))
+        for index, line in enumerate(HELP):
+            y = top + index * row_h
+            if y + row_h > bottom:
+                break
+            body.card((left, y, right, y + row_h))
+            body.text((left + 14, y, right - 14, y + row_h), line,
+                      size=12)
+
+
 def render_compose(surface, state: State, top: int, left: int,
                    well: int, width: int) -> None:
     height = top + well
@@ -255,8 +435,13 @@ def render(surface, state: State) -> None:
               if state.view == "gallery" else
               "Tab field · Enter generate · Ctrl-P preset · Ctrl-B backend"
               " · g gallery · ? help")
-    page = chrome.page(TITLE, [state.model.title], node="IMAGE 001")
-    page.render(surface, 0, footer=footer, status=state.status[:38])
+    page = text.page("IMAGES",
+                     ("Gallery" if state.view == "gallery" else "Compose")
+                     + f" / {state.model.title}",
+                     ("Compose", "Gallery", "Backend", "Help"),
+                     3 if state.show_help else
+                     (1 if state.view == "gallery" else 0))
+    page.render(surface, footer=footer, status=state.status[:38])
     top, left, well, well_width = page.content_box()
     if state.show_help:
         for index, line in enumerate(HELP):
@@ -316,7 +501,16 @@ def handle(key: int, state: State) -> bool:
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
-    wanted = next((a for a in argv if not a.startswith("-")), None)
+    positional: list[str] = []
+    skip = False
+    for argument in argv:
+        if skip:
+            skip = False
+        elif argument == "--screenshot":
+            skip = True
+        elif not argument.startswith("-"):
+            positional.append(argument)
+    wanted = positional[0] if positional else None
     try:
         model = catalog.find(wanted) if wanted \
             else next(m for m in catalog.load()
@@ -331,7 +525,11 @@ def main(argv: list[str] | None = None) -> int:
             target.write(screen.render_to_text(render, state) + "\n")
         return 0
     state.probe()
-    return screen.run(render, state, handle=handle, tick_ms=200)
+    status = pixel.run(
+        argv, PixelRenderer, state, handle, tick_ms=200,
+        command="kilix-bonsai-image")
+    return (screen.run(render, state, handle=handle, tick_ms=200)
+            if status is None else status)
 
 
 if __name__ == "__main__":
