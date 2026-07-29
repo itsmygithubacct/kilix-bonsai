@@ -35,7 +35,7 @@ class State:
         self.system = runtime.get("system", "You are a helpful assistant.")
         self.editor = widgets.Editor()
         self.scroll = widgets.Scrollback()
-        self.status = "starting the model server…"
+        self.status = "measuring free VRAM…"
         self.streaming = False
         self.cancel = False
         self.error = ""
@@ -45,43 +45,55 @@ class State:
         self.show_help = False
         self.started = 0.0
         self.tokens = 0
-        # The GPU is picked from what is measured free right now, not from a
-        # default, and the choice explains itself so the header can say which
-        # card and why this model rather than the other.
-        self.choice = chat.choose(model.id)
-        self.session = chat.Session(self.choice,
-                                    context=int(runtime.get("context") or 4096))
+        self.finished = False
+        self.choice: chat.Choice | None = None
+        self.session: chat.Session | None = None
 
     # -- lifecycle ----------------------------------------------------------
 
     def boot(self) -> None:
-        """Resolve a backend. No model is loaded until a turn is sent.
+        """Resolve a backend on a thread. No model loads until a turn is sent.
 
-        Deliberately nothing is claimed here: the card is shared with image
-        generation, so opening the UI must not take it.
+        Measuring a remote card may take up to 30 seconds. The first frame must
+        not wait for that probe, and nothing is claimed here: the card is shared
+        with image generation, so opening the UI must not take it.
         """
-        if not self.choice.usable:
-            self.error = self.choice.reason
-            self.status = "unavailable"
-            return
-        if self.choice.model_id != self.model.id:
-            self.model = catalog.find(self.choice.model_id)
-        self.status = f"ready · {self.choice.backend} · {self.choice.reason}"
+        def work() -> None:
+            choice = chat.choose(self.model.id)
+            if not choice.usable:
+                self.choice = choice
+                self.error = choice.reason
+                self.status = "unavailable"
+                return
+            if choice.model_id != self.model.id:
+                self.model = catalog.find(choice.model_id)
+            runtime = self.model.runtime
+            self.session = chat.Session(
+                choice, context=int(runtime.get("context") or 4096))
+            self.choice = choice
+            self.status = f"ready · {choice.backend} · {choice.reason}"
+
+        threading.Thread(target=work, daemon=True).start()
 
     def _progress(self, message: str) -> None:
         self.status = message
 
     def shutdown(self) -> None:
         self.cancel = True
-        self.session.release()
+        if self.session is not None:
+            self.session.release()
 
     @property
     def ready(self) -> bool:
-        return self.choice.usable and not self.error
+        return (self.choice is not None and self.choice.usable
+                and self.session is not None and not self.error)
 
     # -- conversation -------------------------------------------------------
 
     def send(self, text: str) -> None:
+        if self.choice is None:
+            self.status = "still measuring free VRAM…"
+            return
         if not text.strip() or self.streaming or not self.ready:
             return
         self.messages.append(chat.Turn("user", text.strip()))
@@ -95,6 +107,7 @@ class State:
 
     def _generate(self) -> None:
         """Run one turn, claiming the GPU only for its duration."""
+        assert self.session is not None
         try:
             for piece in self.session.stream(
                     self.messages[:-1], system=self.system,
@@ -225,6 +238,9 @@ def handle(key: int, state: State) -> bool:
         state.scroll.scroll(-5)
         return True
     if key in widgets.SUBMIT:
+        if state.choice is None:
+            state.status = "still measuring free VRAM…"
+            return True
         state.send(state.editor.submit())
         return True
     state.editor.handle(key)

@@ -240,6 +240,16 @@ class ImageRequestTest(unittest.TestCase):
 class RuntimeProbeTest(unittest.TestCase):
     """Runtimes are asked, never assumed."""
 
+    def test_the_chat_probe_does_not_block_construction(self) -> None:
+        import inspect
+        module = load_tool("kilix-bonsai-chat")
+        self.assertNotIn("chat.choose(", inspect.getsource(
+            module.State.__init__))
+        state = module.State(catalog.find("bonsai-8b"))
+        self.assertIsNone(state.choice)
+        frame = screen.render_to_text(module.render, state)
+        self.assertIn("measuring free VRAM", frame)
+
     def test_the_loop_can_be_finished_by_a_thread(self) -> None:
         import inspect
         self.assertIn('getattr(state, "finished", False)',
