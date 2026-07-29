@@ -80,6 +80,27 @@ kilix-bonsai verify MODEL [--variant V]
 kilix-bonsai path MODEL [--variant V]
 ```
 
+## Configuration
+
+Machine facts are environment variables rather than constants, because this
+repository is published and a hostname or a home directory baked into it would
+ship with it.
+
+| Variable | For |
+|---|---|
+| `KILIX_BONSAI_CHAT_REMOTE` | Host to borrow a GPU from when this one has none |
+| `KILIX_BONSAI_CHAT_LAUNCHER_DIR` | Directory holding the vendor launchers on that host |
+| `KILIX_BONSAI_NOTARY_HOME` | Vendor runtime's state root (regular 8B) |
+| `KILIX_BONSAI_PRISM_BIN` | Pinned vendor binary directory (regular 8B) |
+| `KILIX_BONSAI_8B_GGUF` | Path to the 8B weights on the running host |
+| `KILIX_BONSAI_IMAGE_REMOTE` | Image scaffold's remote subcommand |
+| `KILIX_TUI_UTILS_HOME` | Where to find the shared chrome, if not alongside |
+
+Only the first two are needed for 27B; 8B needs the middle three as well,
+because it has no wrapper of its own and the shared CLI has to be invoked
+directly. Each is reported by name when it is missing, so nothing has to be
+guessed from a stack trace.
+
 ## Runtimes
 
 Nothing here reimplements inference. Chat drives a `llama-server` built from

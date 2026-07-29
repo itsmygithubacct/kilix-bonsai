@@ -16,7 +16,7 @@ import os
 import shutil
 import sys
 
-from . import art, screen, store
+from . import art, chrome, screen, store
 from .catalog import Model
 
 # Interface per declared runtime kind, and what to say when one is missing.
@@ -73,25 +73,33 @@ def launchable(model: Model) -> tuple[bool, str]:
 
 
 def render(surface, state) -> None:
-    """Draw the launch screen. `state` is the model-store TUI's State."""
-    height, width = surface.getmaxyx()
-    spare = width - LIST_MIN_WIDTH - 2
-    factor = art.fit(max(0, spare), max(0, height - 5)) if spare > 0 else 0
-    art_width = art.size(factor)[0] if factor else 0
-    left = 0
-    list_width = (width - art_width - 3) if factor else (width - 1)
+    """Draw the launch screen. `state` is the model-store TUI's State.
 
-    screen.write(surface, 0, 0, "Kilix Bonsai — launch a model")
-    screen.write(surface, 1, 0, "─" * max(0, width - 1))
+    The chrome comes from the shared utilities when they are installed and
+    degrades to a plain title and rule when they are not, so the same code
+    draws both and the tests keep asserting plain text.
+    """
+    page = chrome.page("KILIX BONSAI",
+                       [m.title for m in state.models], node="BONSAI 001")
+    page.measure(surface)
+    page.render(surface, state.selected,
+                footer="↑/↓ move · Enter open · Tab store · q quit",
+                status=state.message[:40])
+    top, left, well_height, well_width = page.content_box()
+    height, width = surface.getmaxyx()
+    spare = well_width - LIST_MIN_WIDTH - 2
+    factor = art.fit(max(0, spare), max(0, well_height - 1)) if spare > 0 else 0
+    art_width = art.size(factor)[0] if factor else 0
+    list_width = (well_width - art_width - 3) if factor else (well_width - 1)
 
     if factor:
-        drawn = art.draw(surface, 2, width - art_width - 1,
-                         max_height=height - 4, colour=art.usable())
-        if drawn:
-            screen.write(surface, 2 + drawn, width - art_width - 1,
+        drawn = art.draw(surface, top, width - art_width - 1,
+                         max_height=well_height, colour=art.usable())
+        if drawn and top + drawn < height - 2:
+            screen.write(surface, top + drawn, width - art_width - 1,
                          "kilix".center(max(1, art_width - 1)))
 
-    row = 3
+    row = top
     screen.write(surface, row, left, "Choose what to open:")
     row += 2
     for index, model in enumerate(state.models):
@@ -106,6 +114,4 @@ def render(surface, state) -> None:
                      f"    {kind:<15.15} {detail}"[:list_width])
         row += 2
 
-    screen.write(surface, height - 2, 0, state.message[:width - 1])
-    screen.write(surface, height - 1, 0,
-                 "↑/↓ move · Enter open · Tab store · q quit")
+

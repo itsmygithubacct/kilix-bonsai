@@ -289,3 +289,30 @@ class WidgetTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ChromeBridgeTest(unittest.TestCase):
+    """The shared theme is optional, and both paths must draw."""
+
+    def test_the_fallback_has_the_same_api_as_the_shared_page(self) -> None:
+        from kilix_bonsai import chrome
+        plain = chrome._PlainPage("T", ["a", "b"])
+        for name in ("measure", "content_box", "render", "spined"):
+            self.assertTrue(hasattr(plain, name), name)
+        self.assertFalse(plain.spined)
+
+    def test_the_launcher_draws_with_the_core_absent(self) -> None:
+        # A bare checkout over ssh must still render a usable launcher.
+        from kilix_bonsai import chrome, tui
+        saved = chrome._CORE
+        chrome._CORE = False
+        try:
+            state = tui.State()
+            state.screen = "launch"
+            text = screen.render_to_text(tui.render, state,
+                                         height=24, width=80)
+            self.assertIn("Choose what to open", text)
+            for line in text.splitlines():
+                self.assertLessEqual(len(line), 80)
+        finally:
+            chrome._CORE = saved
