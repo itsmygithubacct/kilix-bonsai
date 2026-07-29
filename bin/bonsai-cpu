@@ -65,7 +65,10 @@ def die(msg, code=1):
 
 
 def physical_cores():
-    """Count physical cores; a bandwidth-bound kernel gains nothing from HT."""
+    """Physical cores where /proc/cpuinfo exposes topology (x86), else the
+    logical count. The hyperthreading penalty this avoids was measured on
+    x86; on machines without physical id/core id fields, os.cpu_count() is
+    the best honest default."""
     seen = set()
     try:
         phys = core = None
@@ -95,11 +98,11 @@ def model_dir(model_id):
 
 
 def model_path(args):
+    """Resolve to a file on disk. Informational — no runnability gate, so
+    `path` and `verify` work on any model the store may hold."""
     if args.model:
         return args.model
     spec = MODELS[args.model_id]
-    if not spec["supported"]:
-        die(spec["unsupported_reason"], 2)
     path = os.path.join(model_dir(args.model_id), spec["file"])
     if not os.path.isfile(path):
         die(f"{spec['title']} is not downloaded ({path} missing).\n"
@@ -111,6 +114,16 @@ def model_path(args):
             f"an interrupted download? `kilix-bonsai pull {args.model_id}` "
             f"resumes it, `bonsai-cpu verify` checks the digest", 2)
     return path
+
+
+def runnable_model_path(args):
+    """model_path plus the gate for commands that execute the model. The
+    gate covers --model too: an unverified graph does not become verified
+    by naming its file explicitly."""
+    spec = MODELS[args.model_id]
+    if not spec["supported"]:
+        die(spec["unsupported_reason"], 2)
+    return model_path(args)
 
 
 def binary(name):
@@ -158,7 +171,7 @@ def cmd_verify(args):
 
 def cmd_run(args):
     spec = MODELS[args.model_id]
-    path = model_path(args)
+    path = runnable_model_path(args)
     # --single-turn, not -no-cnv: with a predefined prompt it answers once
     # and exits. Plain -no-cnv leaves the new chat UI spinning on EOF stdin.
     argv = ([binary("llama-cli"), "-m", path, "--single-turn",
@@ -171,7 +184,7 @@ def cmd_run(args):
 
 def cmd_chat(args):
     spec = MODELS[args.model_id]
-    path = model_path(args)
+    path = runnable_model_path(args)
     argv = ([binary("llama-cli"), "-m", path]
             + common_args(args, spec["ctx"]) + SAMPLING)
     execv(argv)
@@ -179,7 +192,7 @@ def cmd_chat(args):
 
 def cmd_serve(args):
     spec = MODELS[args.model_id]
-    path = model_path(args)
+    path = runnable_model_path(args)
     argv = ([binary("llama-server"), "-m", path,
              "--host", args.host, "--port", str(args.port)]
             + common_args(args, spec["ctx"]))
@@ -187,7 +200,7 @@ def cmd_serve(args):
 
 
 def cmd_bench(args):
-    path = model_path(args)
+    path = runnable_model_path(args)
     threads = args.threads or physical_cores()
     argv = [binary("llama-bench"), "-m", path, "-t", str(threads)] + args.extra
     execv(argv)
@@ -214,11 +227,17 @@ def cmd_doctor(args):
     cli = os.path.join(RUNTIME_BIN, "llama-cli")
     report(os.access(cli, os.X_OK), "runtime", RUNTIME_BIN)
     pin_commit = None
-    with open(os.path.join(REPO_DIR, "runtime.pin")) as fh:
-        for line in fh:
-            if line.startswith("commit="):
-                pin_commit = line.split("=", 1)[1].strip()
-    if os.path.isdir(os.path.join(RUNTIME_SRC, ".git")):
+    try:
+        with open(os.path.join(REPO_DIR, "runtime.pin")) as fh:
+            for line in fh:
+                if line.startswith("commit="):
+                    pin_commit = line.split("=", 1)[1].strip()
+    except OSError:
+        pass
+    if not pin_commit:
+        report(False, "runtime pin",
+               "runtime.pin is missing or has no commit= line")
+    elif os.path.isdir(os.path.join(RUNTIME_SRC, ".git")):
         head = subprocess.run(
             ["git", "-C", RUNTIME_SRC, "rev-parse", "HEAD"],
             capture_output=True, text=True).stdout.strip()
@@ -230,10 +249,15 @@ def cmd_doctor(args):
     for model_id, spec in MODELS.items():
         path = os.path.join(model_dir(model_id), spec["file"])
         present = os.path.isfile(path) and os.path.getsize(path) == spec["size"]
-        note = "" if spec["supported"] else "(not yet runnable here)"
-        detail = path if present else f"kilix-bonsai pull {model_id}"
-        report(present or not spec["supported"], spec["title"],
-               f"{detail} {note}".strip())
+        if spec["supported"]:
+            report(present, spec["title"],
+                   path if present else f"kilix-bonsai pull {model_id}")
+        else:
+            # Not a check: this model is not runnable here yet, so neither
+            # its absence nor a suggestion to download it belongs in ok/MISSING.
+            state = ("downloaded, awaiting runtime verification" if present
+                     else "phase 2 — not yet runnable here")
+            print(f"  {'--':8} {spec['title']} — {state}")
     sys.exit(0 if ok else 1)
 
 

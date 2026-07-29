@@ -75,10 +75,26 @@ def main():
         check(r.returncode == 2 and "interrupted" in r.stderr,
               f"truncated model is diagnosed: {r.stderr!r}")
 
-        # 27B is refused with the reason, not attempted.
+        # run-family commands refuse 27B with the reason — and --model does
+        # not tunnel around the gate.
+        for argv in (["run", "--model-id", "bonsai-27b", "hi"],
+                     ["serve", "--model-id", "bonsai-27b"],
+                     ["bench", "--model-id", "bonsai-27b"],
+                     ["run", "--model-id", "bonsai-27b",
+                      "--model", "/tmp/x.gguf", "hi"]):
+            r = run(argv, base)
+            check(r.returncode == 2 and "27B" in r.stderr,
+                  f"{argv[0]} 27b refusal says why: {r.stderr!r}")
+
+        # The informational commands are not gated: a downloaded 27B has a
+        # printable path even though it is not runnable yet.
+        os.makedirs(os.path.join(store, "bonsai-27b"), exist_ok=True)
+        gguf27 = os.path.join(store, "bonsai-27b", "Bonsai-27B-Q1_0.gguf")
+        with open(gguf27, "wb") as fh:
+            fh.truncate(3803452480)
         r = run(["path", "--model-id", "bonsai-27b"], base)
-        check(r.returncode == 2 and "27B" in r.stderr,
-              f"27b refusal says why: {r.stderr!r}")
+        check(r.returncode == 0 and r.stdout.strip() == gguf27,
+              f"path works on unrunnable 27b: {r.stderr!r}")
 
         # verify: a wrong-content file must fail the digest.
         small = os.path.join(tmp, "wrong.gguf")
