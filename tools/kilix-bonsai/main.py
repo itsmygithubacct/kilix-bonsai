@@ -16,7 +16,8 @@ sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
     "src"))
 
-from kilix_bonsai import catalog, paths, provision, store, tui  # noqa: E402
+from kilix_bonsai import (catalog, desktop, paths, provision,  # noqa: E402
+                          store, tui)
 
 
 def _model(model_id: str):
@@ -113,6 +114,12 @@ def cmd_verify(args: argparse.Namespace) -> int:
     variant = model.variant(args.variant)
     ok = store.verify(model, variant, report=lambda path, good, detail: print(
         f"{'ok  ' if good else 'FAIL'} {path} — {detail}"))
+    if getattr(args, "wait", False):
+        print("\nall files verified." if ok else "\nverification failed.")
+        try:
+            input("press Enter to return to Kilix Bonsai… ")
+        except (EOFError, KeyboardInterrupt):
+            pass
     return 0 if ok else 1
 
 
@@ -161,6 +168,13 @@ def build_parser() -> argparse.ArgumentParser:
         description="BitNet models for Kilix: inspect, download, verify.")
     parser.add_argument("--screenshot", metavar="PATH",
                         help="render one frame of the TUI to PATH and exit")
+    # Rendering mode, mirroring the shared desktop's own flags. Without these
+    # the parser rejects them before the desktop is ever consulted.
+    rendering = parser.add_mutually_exclusive_group()
+    rendering.add_argument("--graphics", action="store_true",
+                           help="force the pixel desktop")
+    rendering.add_argument("--text", action="store_true",
+                           help="force the text launcher")
     sub = parser.add_subparsers(dest="command")
 
     sub.add_parser("list", help="one line per model").set_defaults(
@@ -200,6 +214,8 @@ def build_parser() -> argparse.ArgumentParser:
     verify = sub.add_parser("verify", help="hash a variant against its digests")
     verify.add_argument("model")
     verify.add_argument("--variant")
+    verify.add_argument("--wait", action="store_true",
+                        help=argparse.SUPPRESS)
     verify.set_defaults(func=cmd_verify)
 
     sub.add_parser("doctor",
@@ -212,7 +228,10 @@ def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     args = build_parser().parse_args(argv)
     if args.command is None:
-        return tui.main(argv)
+        # Pixels first, the way the rest of this stack renders a desktop;
+        # the curses launcher is the floor for ssh, tmux and a bare console.
+        status = desktop.run(argv)
+        return tui.main(argv) if status is None else status
     return int(args.func(args))
 
 
