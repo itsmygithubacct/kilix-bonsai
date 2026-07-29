@@ -422,6 +422,19 @@ class CpuFallbackTest(unittest.TestCase):
         self.assertTrue(twenty_seven.usable)
         self.assertIn("minutes", twenty_seven.reason)
 
+    def test_2b4t_is_refused_with_its_engine_named(self) -> None:
+        from kilix_bonsai.runtime import chat
+        saved_vram, saved_cpu = chat.free_vram_mib, chat.cpu_runtime
+        chat.free_vram_mib = (
+            lambda backend=chat.LOCAL, timeout=30.0: 8000)
+        chat.cpu_runtime = lambda: "/usr/bin/bonsai-cpu"
+        try:
+            choice = chat.choose("bitnet-b1.58-2b4t")
+        finally:
+            chat.free_vram_mib, chat.cpu_runtime = saved_vram, saved_cpu
+        self.assertFalse(choice.usable)
+        self.assertIn("bitnet.cpp", choice.reason)
+
     def test_8b_stays_the_cpu_default_when_nothing_is_asked_for(self) -> None:
         eight, _ = self._forced(cpu_present=True, free=None)
         self.assertEqual(eight.model_id, "bonsai-8b")

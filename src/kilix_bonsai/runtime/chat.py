@@ -152,6 +152,12 @@ def choose(preferred: str | None = None,
     the measured free VRAM covers it — an unasked-for upgrade to a model four
     times the size is not a favour.
     """
+    if preferred and preferred not in available:
+        return Choice(
+            preferred, LOCAL, None,
+            f"nothing here drives {preferred} — its engine is bitnet.cpp, "
+            "which no interface in this repository speaks yet",
+            False)
     for backend in (LOCAL, REMOTE):
         if backend == REMOTE and not REMOTE_HOST:
             continue

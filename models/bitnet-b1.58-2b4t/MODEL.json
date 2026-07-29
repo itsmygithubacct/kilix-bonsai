@@ -24,7 +24,7 @@
   },
   "runtime": {
     "kind": "chat",
-    "engine": "llama-server",
+    "engine": "bitnet.cpp",
     "model_file": "ggml-model-i2_s.gguf",
     "context": 4096,
     "system": "You are a helpful assistant."
