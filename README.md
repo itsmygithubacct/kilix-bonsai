@@ -41,14 +41,23 @@ not `nproc`.
 
 | Model | Status |
 |---|---|
-| **Bonsai 8B** — Qwen3 dense, 1.16 GB | runs |
-| **Bonsai 27B** — Qwen3.5 hybrid-attention, 3.8 GB | phase 2: graph not yet verified under the pinned runtime |
+| **Bonsai 8B** — Qwen3 dense, 1.16 GB | runs; the daily driver |
+| **Bonsai 27B** — Qwen3.5 hybrid-attention, 3.8 GB | runs; ~1.1 tok/s here — patience or a faster machine |
+
+The 27B is a *thinking* model. At one token per second a reasoning
+preamble would spend minutes before the first visible word, so by default
+it is asked to answer directly; `--think` (on `run` and `chat`) restores
+reasoning for when the answer matters more than the wait. Its measured
+shape on the reference machine: 2.0 t/s prompt, 1.1 t/s generation at 4
+threads — and a warning from the same bench: hyperthreads *collapse* it
+(0.4 t/s at 8), where the 8B merely sagged.
 
 The commands that *execute* a model (`run`, `chat`, `serve`, `bench`)
-refuse the 27B until its graph is verified — `--model` included, because an
-unverified graph does not become verified by naming its file explicitly.
-The informational commands (`path`, `verify`) work on any model the store
-holds.
+refuse any model whose graph has not been verified under the pinned
+runtime — `--model` included, because an unverified graph does not become
+verified by naming its file explicitly. Both carried models are verified
+today; the gate waits for the next arrival. The informational commands
+(`path`, `verify`) work on any model the store holds either way.
 
 Weights are resolved from the kilix-bonsai store
 (`KILIX_BONSAI_MODELS_DIR`, per-model `KILIX_BONSAI_BONSAI_8B_DIR`, default

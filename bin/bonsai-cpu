@@ -48,10 +48,10 @@ MODELS = {
         "sha256": "17ef842e47450caeb8eaa3ebfbbab5d2f2278b62b79be107985fb69a2f819aa0",
         "env": "KILIX_BONSAI_BONSAI_27B_DIR",
         "ctx": 4096,
-        "supported": False,
-        "unsupported_reason": (
-            "Bonsai 27B is a hybrid-attention model; its graph has not been "
-            "verified under the pinned runtime yet. 8B first."),
+        "supported": True,
+        # A thinking model at ~1 tok/s would spend minutes reasoning before
+        # its first visible word; answers directly unless asked to think.
+        "extra": ["--reasoning", "off"],
     },
 }
 
@@ -169,6 +169,11 @@ def cmd_verify(args):
     print(f"bonsai-cpu: {spec['title']} verified ({got})")
 
 
+def model_extra(args):
+    spec = MODELS[args.model_id]
+    return [] if getattr(args, "think", False) else spec.get("extra", [])
+
+
 def cmd_run(args):
     spec = MODELS[args.model_id]
     path = runnable_model_path(args)
@@ -176,7 +181,7 @@ def cmd_run(args):
     # and exits. Plain -no-cnv leaves the new chat UI spinning on EOF stdin.
     argv = ([binary("llama-cli"), "-m", path, "--single-turn",
              "--no-display-prompt"]
-            + common_args(args, spec["ctx"])
+            + common_args(args, spec["ctx"]) + model_extra(args)
             + (["--temp", "0"] if args.greedy else SAMPLING)
             + ["-n", str(args.n_predict), "-p", " ".join(args.prompt)])
     execv(argv)
@@ -186,7 +191,7 @@ def cmd_chat(args):
     spec = MODELS[args.model_id]
     path = runnable_model_path(args)
     argv = ([binary("llama-cli"), "-m", path]
-            + common_args(args, spec["ctx"]) + SAMPLING)
+            + common_args(args, spec["ctx"]) + model_extra(args) + SAMPLING)
     execv(argv)
 
 
@@ -287,9 +292,14 @@ def main():
     p = add("run", cmd_run, "one-shot generation")
     p.add_argument("-n", "--n-predict", type=int, default=256)
     p.add_argument("--greedy", action="store_true")
+    p.add_argument("--think", action="store_true",
+                   help="let a thinking model reason before answering "
+                        "(the preamble arrives at generation speed)")
     p.add_argument("prompt", nargs="+")
 
-    add("chat", cmd_chat, "interactive chat (model's own template)")
+    p = add("chat", cmd_chat, "interactive chat (model's own template)")
+    p.add_argument("--think", action="store_true",
+                   help="let a thinking model reason before answering")
 
     p = add("serve", cmd_serve, "OpenAI-compatible server (llama-server)")
     p.add_argument("--host", default="127.0.0.1")
