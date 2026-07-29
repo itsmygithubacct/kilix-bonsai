@@ -166,6 +166,20 @@ class InterfaceRenderTest(unittest.TestCase):
         state.error = "a runtime that is not there"
         self._exercise(module, state, [])
 
+    def test_chat_does_not_claim_dead_controls_or_token_metrics(self) -> None:
+        import inspect
+        module = load_tool("kilix-bonsai-chat")
+        state = module.State(catalog.find("bonsai-8b"))
+        self.assertFalse(hasattr(state, "temperature"))
+        self.assertNotIn("Ctrl-T", " ".join(module.HELP))
+        source = inspect.getsource(module.render)
+        self.assertNotIn("chunks", source)
+        state.streaming = True
+        state.started = module.time.monotonic()
+        frame = screen.render_to_text(module.render, state)
+        self.assertIn("generating", frame)
+        self.assertIn("Esc stops", frame)
+
     def test_image(self) -> None:
         module = load_tool("kilix-bonsai-image")
         state = module.State(catalog.find("bonsai-image-4b"))

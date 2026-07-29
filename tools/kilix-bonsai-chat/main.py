@@ -40,11 +40,8 @@ class State:
         self.cancel = False
         self.error = ""
         self.stdscr = None
-        self.temperature = 0.7
-        self.top_p = 0.9
         self.show_help = False
         self.started = 0.0
-        self.tokens = 0
         self.finished = False
         self.delegate: list[str] | None = None
         self.choice: chat.Choice | None = None
@@ -113,7 +110,6 @@ class State:
         self.messages.append(chat.Turn("assistant", ""))
         self.streaming = True
         self.cancel = False
-        self.tokens = 0
         self.started = time.monotonic()
         self.scroll.to_end()
         threading.Thread(target=self._generate, daemon=True).start()
@@ -126,7 +122,6 @@ class State:
                     self.messages[:-1], system=self.system,
                     should_stop=lambda: self.cancel):
                 self.messages[-1].content += piece
-                self.tokens += 1
         except chat.ChatError as error:
             self.messages[-1].content += f"\n[{error}]"
         finally:
@@ -161,7 +156,7 @@ HELP = [
     "Enter      send            Esc      stop generating",
     "↑/↓        history         PgUp/Dn  scroll transcript",
     "Ctrl-R     new conversation         Ctrl-S  save to markdown",
-    "Ctrl-T     temperature     ?        this help      Ctrl-Q  quit",
+    "?          this help                 Ctrl-Q  quit",
 ]
 
 
@@ -180,13 +175,11 @@ def render(surface, state: State) -> None:
     height, width = surface.getmaxyx()
     if state.streaming:
         elapsed = time.monotonic() - state.started
-        foot = (f"generating… {state.tokens} chunks, "
-                f"{state.tokens / elapsed if elapsed else 0:.0f}/s · Esc stops")
+        foot = f"generating… {elapsed:.0f}s · Esc stops"
     elif not state.ready:
         foot = state.status
     else:
-        foot = ("Enter send · Ctrl-R new · Ctrl-S save · ? help · Ctrl-Q quit "
-                f"· temp {state.temperature:.1f}")
+        foot = "Enter send · Ctrl-R new · Ctrl-S save · ? help · Ctrl-Q quit"
     page = chrome.page(TITLE, [state.model.title], node="CHAT 001")
     page.render(surface, 0, footer=foot, status=state.status[:38])
     top, left, well, well_width = page.content_box()
@@ -239,10 +232,6 @@ def handle(key: int, state: State) -> bool:
     if key == 19:                                   # Ctrl-S
         if state.messages:
             state.status = f"saved {os.path.basename(state.save())}"
-        return True
-    if key == 20:                                   # Ctrl-T
-        state.temperature = round(
-            0.1 if state.temperature >= 1.2 else state.temperature + 0.2, 1)
         return True
     if key == curses.KEY_PPAGE:
         state.scroll.scroll(5)
