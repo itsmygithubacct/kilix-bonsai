@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import curses
 import os
+import sys
+import termios
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
 
@@ -130,6 +132,17 @@ def run(render: Callable[[Any, Any], None], state: Any, *,
         return 0
 
     def _loop(stdscr: Any) -> int:
+        # cbreak leaves XON/XOFF flow control on, which makes Ctrl-Q and
+        # Ctrl-S vanish into the tty driver instead of arriving as keys —
+        # discovered by driving this loop through a real pty. endwin
+        # restores the original modes on the way out.
+        try:
+            fd = sys.stdin.fileno()
+            attrs = termios.tcgetattr(fd)
+            attrs[0] &= ~termios.IXON
+            termios.tcsetattr(fd, termios.TCSANOW, attrs)
+        except (OSError, ValueError, termios.error):
+            pass
         curses.curs_set(0)
         stdscr.keypad(True)
         if curses.has_colors():

@@ -295,7 +295,9 @@ def render_chat(surface, state: State) -> None:
                          REVERSE)
         else:
             screen.write(surface, height - 2, 2 + cursor, " ", REVERSE)
-    if state.streaming:
+    if state.loading:
+        hint = state.loading
+    elif state.streaming:
         hint = "generating… Esc stops"
     else:
         hint = "Enter send · ^O model · ^T think · ^P params · ^F fold · ? help"
@@ -486,7 +488,12 @@ def _handle_chat(key: int, state: State) -> bool:
         state.view = "help"
         return True
     if key in widgets.SUBMIT:
-        send(state, state.editor.submit())
+        if state.busy():
+            # Typing ahead while the model loads is welcome; sending has to
+            # wait, and silence would read as a swallowed message.
+            state.status = state.loading or "still generating — Esc stops it"
+        else:
+            send(state, state.editor.submit())
         return True
     state.editor.handle(key)
     return True
@@ -506,7 +513,7 @@ def handle(key: int, state: State) -> bool:
         else:
             state.error = ""
         return True
-    if state.loading:
+    if state.loading and state.view != "chat":
         return True                       # nothing to do but wait or Ctrl-Q
     if state.view == "help":
         state.view = "chat" if state.convo else "list"
