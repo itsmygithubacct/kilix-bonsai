@@ -1,0 +1,7 @@
+# The inference runtime this repository builds, pinned exactly.
+# get-runtime.sh reads this file; nothing else defines the runtime.
+url=https://github.com/ggml-org/llama.cpp.git
+commit=60bccc3763395e01b039aa1ddeacc8cc0ea69f70
+# Patches applied on top of the pinned commit, in order. Each line:
+# <file under patches/> <sha256 of the patch file>
+# (none at present — upstream's AVX2 Q1_0 path needs no help for decode)
