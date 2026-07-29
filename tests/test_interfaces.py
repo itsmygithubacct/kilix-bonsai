@@ -72,8 +72,23 @@ class RoutingTest(unittest.TestCase):
 class ArtTest(unittest.TestCase):
     def test_the_sprite_loads_and_has_shape(self) -> None:
         width, cells = art.size()
-        self.assertEqual(width, 40)
-        self.assertEqual(cells, 20)
+        self.assertEqual(width, 64)
+        self.assertEqual(cells, 32)
+
+    def test_it_scales_down_by_whole_numbers_only(self) -> None:
+        # A fractional scale on pixel art gives uneven pixel widths, which
+        # reads as a rendering fault rather than as a smaller sprite.
+        self.assertEqual(art.size(2), (32, 16))
+        self.assertEqual(art.size(4), (16, 8))
+        self.assertEqual(art.fit(70, 34), 1)
+        self.assertEqual(art.fit(40, 20), 2)
+        self.assertEqual(art.fit(8, 4), 0)          # no fit: draw nothing
+
+    def test_a_scaled_sprite_still_reads_as_a_shape(self) -> None:
+        for factor in (1, 2, 3):
+            text = art.as_text(factor)
+            self.assertGreater(text.count(art.UPPER_HALF), 40, factor)
+            self.assertIn(" ", text)
 
     def test_the_silhouette_is_neither_blank_nor_solid(self) -> None:
         # Both failures have happened: an index-based darkness test made the

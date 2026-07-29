@@ -26,9 +26,10 @@ TOOLS = {
     "speech-to-text": ("kilix-bonsai-speech", "Transcribe speech"),
 }
 
-# The art is 40 cells wide; below this there is no room for both it and a
-# readable list, and the list wins.
-ART_MIN_WIDTH = 74
+# The list needs this much to stay readable; whatever is left over is offered
+# to the art, which picks a scale that fits or declines to draw. So the
+# threshold is about the *list*, not the sprite's authored size.
+LIST_MIN_WIDTH = 46
 
 
 def tool_entry(kind: str) -> str | None:
@@ -74,21 +75,21 @@ def launchable(model: Model) -> tuple[bool, str]:
 def render(surface, state) -> None:
     """Draw the launch screen. `state` is the model-store TUI's State."""
     height, width = surface.getmaxyx()
-    show_art = width >= ART_MIN_WIDTH and height >= 14
-    art_width = art.size()[0] if show_art else 0
+    spare = width - LIST_MIN_WIDTH - 2
+    factor = art.fit(max(0, spare), max(0, height - 5)) if spare > 0 else 0
+    art_width = art.size(factor)[0] if factor else 0
     left = 0
-    list_width = width - art_width - 3 if show_art else width - 1
+    list_width = (width - art_width - 3) if factor else (width - 1)
 
     screen.write(surface, 0, 0, "Kilix Bonsai — launch a model")
     screen.write(surface, 1, 0, "─" * max(0, width - 1))
 
-    if show_art:
+    if factor:
         drawn = art.draw(surface, 2, width - art_width - 1,
                          max_height=height - 4, colour=art.usable())
         if drawn:
-            caption = "kilix"
             screen.write(surface, 2 + drawn, width - art_width - 1,
-                         caption.center(art_width - 1))
+                         "kilix".center(max(1, art_width - 1)))
 
     row = 3
     screen.write(surface, row, left, "Choose what to open:")

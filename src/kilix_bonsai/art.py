@@ -1,8 +1,13 @@
 """The Kilix branding art, drawn with half-blocks and 256-colour pairs.
 
 Two pixel rows per character cell, using `▀` with the upper pixel as the
-foreground and the lower as the background. That trick is what lets a 40x40
-sprite fit in 40x20 cells and still look like pixel art rather than a mosaic.
+foreground and the lower as the background. That trick is what lets a 64x64
+sprite fit in 64x32 cells and still look like pixel art rather than a mosaic.
+
+The sprite is authored at its largest useful size and *scaled down* to whatever
+a pane can spare, by whole-number subsampling so the pixels stay square and
+crisp. A launcher that only showed its art on a maximised window would show it
+almost never.
 
 Deliberately not the Kitty graphics protocol. Graphics would be sharper, but
 this has to survive `ssh`, `tmux`, a plain terminal, and — most importantly for
@@ -74,10 +79,27 @@ def is_ink(index: int, threshold: int = 48) -> bool:
     return (299 * red + 587 * green + 114 * blue) // 1000 > threshold
 
 
-def size() -> tuple[int, int]:
-    """Return the sprite's size in character cells (width, height)."""
+def size(factor: int = 1) -> tuple[int, int]:
+    """Return the sprite's size in character cells at a scale factor."""
     document = sprite()
-    return document["width"], (document["height"] + 1) // 2
+    width = document["width"] // factor
+    return width, ((document["height"] // factor) + 1) // 2
+
+
+def fit(max_width: int, max_height: int) -> int:
+    """Return the smallest whole-number reduction that fits the given box.
+
+    Whole numbers only: a fractional scale on pixel art produces uneven pixel
+    widths, which reads as a rendering fault rather than as a smaller sprite.
+    """
+    document = sprite()
+    if not document.get("rows"):
+        return 0
+    for factor in (1, 2, 3, 4):
+        width, cells = size(factor)
+        if width <= max_width and cells <= max_height:
+            return factor
+    return 0
 
 
 def _pair(foreground: int, background: int) -> int:
@@ -118,18 +140,21 @@ def draw(surface, top: int, left: int, *, max_height: int | None = None,
     if not rows:
         return 0
     height, width = surface.getmaxyx()
-    cells = (len(rows) + 1) // 2
+    room_height = max(0, height - top - 1)
     if max_height is not None:
-        cells = min(cells, max_height)
-    cells = min(cells, max(0, height - top - 1))
-    span = min(document["width"], max(0, width - left - 1))
-    if cells <= 0 or span <= 0:
+        room_height = min(room_height, max_height)
+    room_width = max(0, width - left - 1)
+    factor = fit(room_width, room_height)
+    if factor == 0:
         return 0
+    span, cells = size(factor)
     for cell in range(cells):
-        upper = rows[cell * 2]
-        lower = rows[cell * 2 + 1] if cell * 2 + 1 < len(rows) else upper
+        upper = rows[min(cell * 2 * factor, len(rows) - 1)]
+        lower_index = min((cell * 2 + 1) * factor, len(rows) - 1)
+        lower = rows[lower_index]
         for column in range(span):
-            top_colour, bottom_colour = upper[column], lower[column]
+            source = min(column * factor, len(upper) - 1)
+            top_colour, bottom_colour = upper[source], lower[source]
             try:
                 if colour:
                     attribute = curses.color_pair(
@@ -146,7 +171,7 @@ def draw(surface, top: int, left: int, *, max_height: int | None = None,
     return cells
 
 
-def as_text(width_limit: int = 40) -> str:
+def as_text(factor: int = 1) -> str:
     """Render the sprite as plain text, for tests and `--screenshot`.
 
     Ink and space only. This exists so the launcher's layout can be asserted
@@ -154,12 +179,16 @@ def as_text(width_limit: int = 40) -> str:
     """
     document = sprite()
     rows = document.get("rows") or []
+    if not rows:
+        return ""
+    span, cells = size(factor)
     lines = []
-    for cell in range((len(rows) + 1) // 2):
-        upper = rows[cell * 2]
-        lower = rows[cell * 2 + 1] if cell * 2 + 1 < len(rows) else upper
+    for cell in range(cells):
+        upper = rows[min(cell * 2 * factor, len(rows) - 1)]
+        lower = rows[min((cell * 2 + 1) * factor, len(rows) - 1)]
         line = "".join(
-            UPPER_HALF if is_ink(upper[x]) or is_ink(lower[x]) else " "
-            for x in range(min(len(upper), width_limit)))
+            UPPER_HALF if is_ink(upper[min(x * factor, len(upper) - 1)])
+            or is_ink(lower[min(x * factor, len(lower) - 1)]) else " "
+            for x in range(span))
         lines.append(line.rstrip())
     return "\n".join(lines)

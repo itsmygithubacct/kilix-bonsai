@@ -11,7 +11,7 @@ is a 40x40 sprite — enough for the art to read, small enough to commit.
 Requires Pillow, and is run by hand when the art changes. The asset it writes
 is what ships; the launcher never needs Pillow.
 
-    python3 scripts/make-art.py source.png src/kilix_bonsai/assets/kitten.json
+    python3 scripts/make-art.py source.png src/kilix_bonsai/assets/kitten.json [size]
 """
 from __future__ import annotations
 
@@ -23,8 +23,11 @@ try:
 except ImportError:                                        # pragma: no cover
     sys.exit("this script needs Pillow: pip install pillow")
 
-WIDTH = 40
-HEIGHT = 40
+# 64x64 fills 64 columns by 32 rows of half-blocks. The renderer scales down
+# to whatever a pane can spare, so this is the ceiling rather than the size it
+# is always shown at — author big, let the terminal decide.
+WIDTH = 64
+HEIGHT = 64
 
 
 def xterm256(rgb: tuple[int, int, int]) -> int:
@@ -61,9 +64,12 @@ def xterm256(rgb: tuple[int, int, int]) -> int:
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) != 2:
+    if not 2 <= len(argv) <= 3:
         sys.exit(__doc__.strip().splitlines()[-1].strip())
-    source, target = argv
+    source, target = argv[0], argv[1]
+    global WIDTH, HEIGHT
+    if len(argv) == 3:
+        WIDTH = HEIGHT = int(argv[2])
     image = Image.open(source).convert("RGB")
     # NEAREST, not LANCZOS: the source is already pixel art, and a smooth
     # filter turns crisp edges into a halo of in-between colours that the
