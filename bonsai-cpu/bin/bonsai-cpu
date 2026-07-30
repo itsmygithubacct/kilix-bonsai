@@ -1,0 +1,253 @@
+#!/usr/bin/env python3
+"""Run the 1-bit Bonsai models on CPU.
+
+The weights belong to the kilix-bonsai store and are resolved from it; the
+runtime is upstream llama.cpp at a pinned commit, built CPU-only by the
+scripts in this repository. This command is the thin part: it finds the
+model, finds the runtime, and execs the right binary with defaults that are
+right for these checkpoints. The knowledge itself lives in the bonsai_cpu
+package so the chat interface cannot disagree with the command line.
+"""
+
+import argparse
+import hashlib
+import os
+import subprocess
+import sys
+
+REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(
+    os.path.realpath(__file__))))
+sys.path.insert(0, os.path.join(REPO_DIR, "src"))
+
+from bonsai_cpu import models
+from bonsai_cpu.models import MODELS, SAMPLING
+
+
+def die(msg, code=1):
+    print(f"bonsai-cpu: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+def model_path(args):
+    try:
+        return models.resolve(args.model_id, args.model)
+    except models.ModelError as error:
+        die(str(error), error.code)
+
+
+def runnable_model_path(args):
+    try:
+        return models.resolve_runnable(args.model_id, args.model)
+    except models.ModelError as error:
+        die(str(error), error.code)
+
+
+def binary(name):
+    try:
+        return models.binary(name)
+    except models.ModelError as error:
+        die(str(error), error.code)
+
+
+def execv(argv):
+    os.execv(argv[0], argv)
+
+
+def common_args(args, ctx_default):
+    threads = args.threads or models.physical_cores()
+    ctx = args.ctx or ctx_default
+    return ["-t", str(threads), "-c", str(ctx)]
+
+
+def model_extra(args):
+    spec = MODELS[args.model_id]
+    return [] if getattr(args, "think", False) else spec.get("extra", [])
+
+
+def cmd_build(args):
+    scripts = os.path.join(REPO_DIR, "scripts")
+    for script in ("get-runtime.sh", "build-runtime.sh"):
+        rc = subprocess.call([os.path.join(scripts, script)])
+        if rc != 0:
+            sys.exit(rc)
+
+
+def cmd_path(args):
+    print(model_path(args))
+
+
+def cmd_verify(args):
+    spec = MODELS[args.model_id]
+    path = model_path(args)
+    digest = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            digest.update(chunk)
+    got = digest.hexdigest()
+    if got != spec["sha256"]:
+        die(f"sha256 mismatch for {path}\n  expected {spec['sha256']}\n"
+            f"  got      {got}", 1)
+    print(f"bonsai-cpu: {spec['title']} verified ({got})")
+
+
+def cmd_run(args):
+    spec = MODELS[args.model_id]
+    path = runnable_model_path(args)
+    # --single-turn, not -no-cnv: with a predefined prompt it answers once
+    # and exits. Plain -no-cnv leaves the new chat UI spinning on EOF stdin.
+    argv = ([binary("llama-cli"), "-m", path, "--single-turn",
+             "--no-display-prompt"]
+            + common_args(args, spec["ctx"]) + model_extra(args)
+            + (["--temp", "0"] if args.greedy else SAMPLING)
+            + ["-n", str(args.n_predict), "-p", " ".join(args.prompt)])
+    execv(argv)
+
+
+def cmd_chat(args):
+    spec = MODELS[args.model_id]
+    path = runnable_model_path(args)
+    if args.plain:
+        argv = ([binary("llama-cli"), "-m", path]
+                + common_args(args, spec["ctx"]) + model_extra(args)
+                + SAMPLING)
+        execv(argv)
+    # The TUI needs the server; refusing here keeps the message on stderr
+    # instead of inside a curses frame.
+    binary("llama-server")
+    from bonsai_cpu import chat_tui
+    graphics = True if args.graphics else False if args.text else None
+    sys.exit(chat_tui.main(model_id=args.model_id, think=args.think,
+                           threads=args.threads, ctx=args.ctx,
+                           graphics=graphics))
+
+
+def cmd_serve(args):
+    spec = MODELS[args.model_id]
+    path = runnable_model_path(args)
+    argv = ([binary("llama-server"), "-m", path,
+             "--host", args.host, "--port", str(args.port)]
+            + common_args(args, spec["ctx"]))
+    execv(argv)
+
+
+def cmd_bench(args):
+    path = runnable_model_path(args)
+    threads = args.threads or models.physical_cores()
+    argv = [binary("llama-bench"), "-m", path, "-t", str(threads)] + args.extra
+    execv(argv)
+
+
+def cmd_doctor(args):
+    ok = True
+
+    def report(good, label, detail=""):
+        nonlocal ok
+        mark = "ok" if good else "MISSING"
+        ok = ok and good
+        print(f"  {mark:8} {label}" + (f" — {detail}" if detail else ""))
+
+    print("bonsai-cpu doctor")
+    try:
+        flags = open("/proc/cpuinfo").read()
+        report("avx2" in flags, "avx2", "the fast kernel path needs it"
+               if "avx2" not in flags else "")
+    except OSError:
+        report(False, "avx2", "could not read /proc/cpuinfo")
+    print(f"  {'':8} {models.physical_cores()} physical cores")
+
+    cli = os.path.join(models.RUNTIME_BIN, "llama-cli")
+    report(os.access(cli, os.X_OK), "runtime", models.RUNTIME_BIN)
+    pin_commit = None
+    try:
+        with open(os.path.join(REPO_DIR, "runtime.pin")) as fh:
+            for line in fh:
+                if line.startswith("commit="):
+                    pin_commit = line.split("=", 1)[1].strip()
+    except OSError:
+        pass
+    if not pin_commit:
+        report(False, "runtime pin",
+               "runtime.pin is missing or has no commit= line")
+    elif os.path.isdir(os.path.join(models.RUNTIME_SRC, ".git")):
+        head = subprocess.run(
+            ["git", "-C", models.RUNTIME_SRC, "rev-parse", "HEAD"],
+            capture_output=True, text=True).stdout.strip()
+        report(head == pin_commit, "runtime pin",
+               f"checkout {head[:12]} vs pin {pin_commit[:12]}")
+    else:
+        report(False, "runtime pin", "no checkout yet — run: bonsai-cpu build")
+
+    for model_id, spec in MODELS.items():
+        path = os.path.join(models.model_dir(model_id), spec["file"])
+        present = os.path.isfile(path) and os.path.getsize(path) == spec["size"]
+        if spec["supported"]:
+            report(present, spec["title"],
+                   path if present else f"kilix-bonsai pull {model_id}")
+        else:
+            # Not a check: this model is not runnable here yet, so neither
+            # its absence nor a suggestion to download it belongs in ok/MISSING.
+            state = ("downloaded, awaiting runtime verification" if present
+                     else "phase 2 — not yet runnable here")
+            print(f"  {'--':8} {spec['title']} — {state}")
+    sys.exit(0 if ok else 1)
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        prog="bonsai-cpu",
+        description="Run the 1-bit Bonsai models on CPU.")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    def add(name, fn, help_text, model=True):
+        p = sub.add_parser(name, help=help_text)
+        p.set_defaults(fn=fn)
+        if model:
+            p.add_argument("--model-id", default="bonsai-8b",
+                           choices=sorted(MODELS))
+            p.add_argument("--model", metavar="PATH",
+                           help="explicit GGUF path (skips store resolution)")
+            p.add_argument("--threads", type=int)
+            p.add_argument("--ctx", type=int)
+        return p
+
+    add("build", cmd_build, "fetch the pinned runtime and build it", model=False)
+    add("doctor", cmd_doctor, "what is present, what is missing", model=False)
+    add("path", cmd_path, "print the resolved model path")
+    add("verify", cmd_verify, "sha256-check the model against its pin")
+
+    p = add("run", cmd_run, "one-shot generation")
+    p.add_argument("-n", "--n-predict", type=int, default=256)
+    p.add_argument("--greedy", action="store_true")
+    p.add_argument("--think", action="store_true",
+                   help="let a thinking model reason before answering "
+                        "(the preamble arrives at generation speed)")
+    p.add_argument("prompt", nargs="+")
+
+    p = add("chat", cmd_chat, "streaming chat with saved conversations")
+    p.add_argument("--think", action="store_true",
+                   help="let a thinking model reason before answering")
+    display = p.add_mutually_exclusive_group()
+    display.add_argument(
+        "--plain", action="store_true",
+        help="the runtime's own CLI chat instead of the TUI")
+    display.add_argument(
+        "--graphics", action="store_true",
+        help="require the Kilix pixel interface")
+    display.add_argument(
+        "--text", action="store_true",
+        help="require the portable text interface")
+
+    p = add("serve", cmd_serve, "OpenAI-compatible server (llama-server)")
+    p.add_argument("--host", default="127.0.0.1")
+    p.add_argument("--port", type=int, default=8188)
+
+    p = add("bench", cmd_bench, "llama-bench, defaults suited to this machine")
+    p.add_argument("extra", nargs="*",
+                   help="extra llama-bench flags after --")
+
+    args = parser.parse_args()
+    args.fn(args)
+
+
+if __name__ == "__main__":
+    main()
