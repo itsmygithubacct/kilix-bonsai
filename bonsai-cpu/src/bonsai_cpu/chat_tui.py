@@ -279,7 +279,7 @@ def render_chat(surface, state: State) -> None:
                   "^F fold · ? help")
     status = state.status or status_line(state)
     pane_top, pane_bottom, width = layout.shell(
-        surface, breadcrumb=f"Conversation / {spec['title']}{think} / {name}",
+        surface, breadcrumb=f"{spec['title']}{think} · {name}",
         active=1, status=status, footer=footer)
     pane_bottom -= 1
     pane_height = max(1, pane_bottom - pane_top + 1)

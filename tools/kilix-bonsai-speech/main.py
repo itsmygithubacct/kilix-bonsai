@@ -317,7 +317,13 @@ def render(surface, state: State) -> None:
 
     label = "wav path" if state.field == "file" else "hotwords"
     visible, cursor = state.editor.view(max(1, width - 14))
-    screen.write(surface, top, left, f"> {label:<10} {visible}")
+    screen.write(
+        surface,
+        top,
+        left,
+        f"▶ {label:<10} {visible}".ljust(well_width),
+        text.attr("selected"),
+    )
     mode = "greedy" if state.engine.greedy else "sampled"
     screen.write(surface, top + 1, left,
                  f"  decoding   {mode}, {state.engine.threads} threads")

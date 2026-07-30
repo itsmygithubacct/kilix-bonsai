@@ -9,20 +9,17 @@ CPU inference.
 kilix bonsai                       # the launcher, the store, and the interfaces
 ```
 
-Opening it on a machine with nothing downloaded is the normal case. The text
-UI starts on setup and the pixel desktop starts in Models; both show what each
-model costs and offer to fetch it. Neither opens on an error about a directory
-that was always going to be empty. Once something is downloaded the first
-runnable task is selected instead, because by then "open a model" is what you
-came to do.
+Opening it on a machine with nothing downloaded is the normal case. The TUI
+starts on setup, shows what each model costs, and offers to fetch it. It does
+not open on an error about a directory that was always going to be empty. Once
+something is downloaded the first runnable task is selected instead, because
+by then "open a model" is what you came to do.
 
-In a Kitty-compatible terminal, that no-argument launcher uses the same
-Tango-themed pixel desktop, `soft-raster` backend, and Kitty graphics transport
-as `kilix-tui`. Its Models section drills into every variant and keeps
-downloads, dependency installation, verification, and launching available.
-`--text` forces the self-contained text UI; `--graphics` forces pixels and
-reports a clean error when the terminal cannot provide them. `--screenshot`
-always captures the portable text rendering.
+The no-argument launcher uses the same canonical text shell as the rest of the
+Kilix utilities: `KILIX TUI`, numbered navigation, one divider, a compact
+status row, application content, and a footer. `--graphics` explicitly selects
+the optional Tango pixel desktop and reports a clean error when the terminal
+cannot provide it. `--screenshot` always captures the text rendering.
 
 ## Interfaces and CPU runtime
 
@@ -34,12 +31,10 @@ always captures the portable text rendering.
 | `kilix-bonsai-speech` | VibeVoice ASR BitNet | Record or point at a WAV; transcript grows chunk by chunk; copy or write it out |
 | `bonsai-cpu` | Bonsai 8B and 27B | Pinned upstream llama.cpp, CPU-only build, resident chat, one-shot inference, serving, and benchmarks |
 
-The launcher and all three task interfaces use the Tango pixel desktop from
-`kilix-tui-utils` by default: the same blue navigation, quiet content card,
-large raster text, and restrained grey hierarchy as `kilix-tui`. Chat stays in
-that interface while it streams, as do image generation and transcription.
-A compact version of the same layout is the fallback over `ssh`, in `tmux`,
-or with `--text`; every fallback screen still renders to plain text for tests.
+The launcher and all three task interfaces use that text shell by default.
+Chat stays in it while it streams, as do image generation and transcription.
+The optional pixel rendering remains available with `--graphics`; every text
+screen renders to plain text for tests.
 
 Which interface a model gets is declared by that model's `MODEL.json`
 (`runtime.kind`), not decided here — so a new model arrives with its own
@@ -84,7 +79,7 @@ Makefile, and an SSH session all want the non-interactive path:
 ```sh
 kilix-bonsai                       # the TUI
 kilix-bonsai --graphics            # require the shared pixel desktop
-kilix-bonsai --text                # require the portable text TUI
+kilix-bonsai --text                # explicitly select the default text TUI
 kilix-bonsai --screenshot FRAME    # write one text frame and exit
 kilix-bonsai list                  # one line per model
 kilix-bonsai status [MODEL]        # what is on disk, per variant

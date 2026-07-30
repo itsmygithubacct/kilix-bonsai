@@ -383,13 +383,20 @@ def render_compose(surface, state: State, top: int, left: int,
     }
     row = top
     for index, name in enumerate(FIELDS):
-        marker = ">" if index == state.field else " "
-        if index == state.field:
+        selected = index == state.field
+        marker = "▶" if selected else " "
+        if selected:
             visible, _ = state.editor.view(max(1, width - 16))
             shown = visible
         else:
             shown = values[name]
-        screen.write(surface, row, left, f"{marker} {name:<10} {shown}")
+        screen.write(
+            surface,
+            row,
+            left,
+            f"{marker} {name:<10} {shown}".ljust(width),
+            text.attr("selected") if selected else 0,
+        )
         row += 1
     row += 1
     preset = backend.PRESETS[state.preset][0]
@@ -418,11 +425,18 @@ def render_gallery(surface, state: State, top: int, left: int,
     for index, entry in enumerate(
             state.gallery.entries[start:start + visible]):
         position = start + index
-        marker = ">" if position == state.selected else " "
-        screen.write(surface, row, left,
-                     f"{marker} {os.path.basename(entry.path):<22.22} "
-                     f"{entry.request.size:>9}  "
-                     f"{entry.request.prompt[:width - 40]}")
+        selected = position == state.selected
+        marker = "▶" if selected else " "
+        line = (f"{marker} {os.path.basename(entry.path):<22.22} "
+                f"{entry.request.size:>9}  "
+                f"{entry.request.prompt[:width - 40]}")
+        screen.write(
+            surface,
+            row,
+            left,
+            line.ljust(width),
+            text.attr("selected") if selected else 0,
+        )
         row += 1
     entry = state.gallery.entries[state.selected]
     screen.write(surface, top + well - 1, left,

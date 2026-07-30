@@ -273,7 +273,7 @@ class ChatRenderer:
                   self.tango.WHITE)
         draw.text((pad + title.width("KILIX TUI") + pad, 0,
                    width - pad - small.width(clock) - pad, height - 4),
-                  "BONSAI  //  CPU CHAT", small, self.tango.GREY)
+                  "BONSAI · CPU CHAT", small, self.tango.GREY)
         clock_font = self.graphics.font_for(26 * scale, bold=True)
         draw.text((width // 2, 0, width - pad, height - 4), clock,
                   clock_font, self.tango.SILVER, align="right")
@@ -584,10 +584,10 @@ def _action(action: Any, state: Any,
 
 def run(state: Any, handle: Callable[[int, Any], bool], *,
         mode: bool | None = None, tick_ms: int = 100) -> int | None:
-    """Run the graphical chat, or return ``None`` for the text fallback."""
-    if mode is False or os.environ.get("KILIX_TUI_HEADLESS") == "1":
+    """Run explicitly requested graphics, otherwise use the canonical TUI."""
+    if mode is not True or os.environ.get("KILIX_TUI_HEADLESS") == "1":
         return None
-    forced = mode is True
+    forced = True
     modules = shared()
     if modules is None:
         if forced:

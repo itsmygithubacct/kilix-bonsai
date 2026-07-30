@@ -17,10 +17,10 @@ from __future__ import annotations
 import os
 import sys
 
-from . import launcher, provision, screen, store
+from . import launcher, provision, screen, store, text
 from .catalog import Model, Variant, load
 
-TITLE = "Kilix Bonsai"
+SECTIONS = ("Chat", "Speech", "Images", "Models")
 
 # Two vocabularies for the same three states: the table has one column left
 # after the numbers, the detail screen has the whole width.
@@ -142,79 +142,87 @@ class State:
 # -- rendering --------------------------------------------------------------
 
 
-def _header(surface, state: State, subtitle: str) -> None:
-    _, width = surface.getmaxyx()
-    ready = f"{state.ready_count}/{len(state.models)} ready"
-    screen.write(surface, 0, 0, f"{TITLE} — {subtitle}")
-    screen.write(surface, 0, max(0, width - len(ready) - 1), ready)
-    screen.write(surface, 1, 0, "─" * max(0, width - 1))
-
-
-def _footer(surface, state: State, keys: str) -> None:
-    height, _ = surface.getmaxyx()
-    screen.write(surface, height - 2, 0, state.message)
-    screen.write(surface, height - 1, 0, keys)
+def _frame(
+    surface,
+    state: State,
+    breadcrumb: str,
+    footer: str,
+) -> tuple[int, int, int, int]:
+    status = f"{state.ready_count}/{len(state.models)} ready"
+    if state.message:
+        status += f" · {state.message}"
+    page = text.page("MODELS", breadcrumb, SECTIONS, 3)
+    page.render(surface, footer=footer, status=status)
+    return page.content_box()
 
 
 def render_setup(surface, state: State) -> None:
-    height, _ = surface.getmaxyx()
-    _header(surface, state, "first run")
-    screen.write(surface, 2, 0,
+    top, left, well, _width = _frame(
+        surface, state, "Models · First run",
+        "↑/↓ move · Enter download · d dependencies · Tab list · q quit",
+    )
+    bottom = top + well
+    screen.write(surface, top, left,
                  "No model weights are on this machine yet.")
-    screen.write(surface, 3, 0,
+    screen.write(surface, top + 1, left,
                  "Pick one below and press Enter to download it, or press d to")
-    screen.write(surface, 4, 0,
+    screen.write(surface, top + 2, left,
                  "install its dependencies first. Nothing is fetched until you")
-    screen.write(surface, 5, 0, "confirm the size.")
-    row = 7
+    screen.write(surface, top + 3, left, "confirm the size.")
+    row = top + 5
     for index, model in enumerate(state.models):
-        if row >= height - 3:
+        if row >= bottom - 1:
             break
-        marker = ">" if index == state.selected else " "
+        selected = index == state.selected
+        marker = "▶" if selected else " "
         variant = model.default_variant
-        screen.write(surface, row, 0,
+        screen.write(surface, row, left,
                      f"{marker} {model.title:<22.22} {model.task:<15.15} "
-                     f"{store.human_bytes(variant.bytes):>7}  {model.summary}")
+                     f"{store.human_bytes(variant.bytes):>7}  {model.summary}",
+                     text.attr("selected") if selected else 0)
         row += 1
     total = store.human_bytes(state.total_bytes)
-    screen.write(surface, min(row + 1, height - 3), 0,
+    screen.write(surface, min(row + 1, bottom - 1), left,
                  f"  all {len(state.models)} models: {total}")
-    _footer(surface, state,
-            "↑/↓ move · Enter download · d dependencies · Tab list · q quit")
 
 
 def render_list(surface, state: State) -> None:
-    height, _ = surface.getmaxyx()
-    _header(surface, state, "BitNet models")
-    screen.write(surface, 2, 0,
+    top, left, well, _width = _frame(
+        surface, state, "Models · BitNet catalog",
+        "↑/↓ move · Enter details · o open · d download · i deps · q quit",
+    )
+    screen.write(surface, top, left,
                  f"  {'MODEL':<22.22} {'TASK':<15.15} {'QUANTIZATION':<17.17} "
-                 f"{'SIZE':>6}  STATE")
-    row = 3
-    visible = max(1, height - 6)
+                 f"{'SIZE':>6}  STATE", text.attr("title"))
+    row = top + 1
+    visible = max(1, well - 1)
     start = max(0, min(state.selected - visible // 2,
                        max(0, len(state.models) - visible)))
     for index, model in enumerate(state.models[start:start + visible]):
         position = start + index
-        marker = ">" if position == state.selected else " "
+        selected = position == state.selected
+        marker = "▶" if selected else " "
         variant = model.default_variant
         disk = state.state_of(model, variant)
         label = _SHORT[disk.state]
         if disk.state == store.PARTIAL:
             label = (f"{store.human_bytes(disk.present_bytes)}"
                      f"/{store.human_bytes(variant.bytes)}")
-        screen.write(surface, row, 0,
+        screen.write(surface, row, left,
                      f"{marker} {model.title:<22.22} {model.task:<15.15} "
                      f"{model.quantization:<17.17} "
-                     f"{store.human_bytes(variant.bytes):>6}  {label}")
+                     f"{store.human_bytes(variant.bytes):>6}  {label}",
+                     text.attr("selected") if selected else 0)
         row += 1
-    _footer(surface, state,
-            "↑/↓ move · Enter details · o open · d download · i deps · q quit")
 
 
 def render_detail(surface, state: State) -> None:
-    height, width = surface.getmaxyx()
     model = state.model
-    _header(surface, state, model.title)
+    top, left, well, width = _frame(
+        surface, state, f"Models · {model.title}",
+        "↑/↓ variant · Enter download · i deps · v verify · h back · q quit",
+    )
+    bottom = top + well
     lines = [
         model.summary,
         "",
@@ -229,50 +237,51 @@ def render_detail(surface, state: State) -> None:
         lines.append(f"shared with  {model.shared_with}")
     deps = store.deps_state(model)
     lines.append("dependencies " + ("installed" if deps else "not installed"))
-    row = 2
+    row = top
     for line in lines:
-        if row >= height - 4:
+        if row >= bottom - 2:
             break
         if not line:
             row += 1
             continue
         # Long values (an upstream URL, a store path) wrap rather than vanish.
-        while line and row < height - 4:
-            screen.write(surface, row, 0, line[: width - 1])
-            line = line[width - 1:]
+        while line and row < bottom - 2:
+            screen.write(surface, row, left, line[:width])
+            line = line[max(1, width):]
             row += 1
-    row = min(row + 1, height - 4)
-    screen.write(surface, row, 0, "VARIANTS")
+    row = min(row + 1, bottom - 2)
+    screen.write(surface, row, left, "VARIANTS", text.attr("title"))
     row += 1
     for index, variant in enumerate(model.variants):
-        if row >= height - 2:
+        if row >= bottom:
             break
-        marker = ">" if index == min(state.variant_index,
-                                     len(model.variants) - 1) else " "
+        selected = index == min(state.variant_index, len(model.variants) - 1)
+        marker = "▶" if selected else " "
         disk = state.state_of(model, variant)
         default = " (default)" if variant.default else ""
-        screen.write(surface, row, 0,
+        screen.write(surface, row, left,
                      f"{marker} {variant.title + default:<40.40} "
                      f"{store.human_bytes(variant.bytes):>7}  "
-                     f"{_LONG[disk.state]}")
+                     f"{_LONG[disk.state]}",
+                     text.attr("selected") if selected else 0)
         row += 1
-    _footer(surface, state,
-            "↑/↓ variant · Enter download · i deps · v verify · h back · q quit")
 
 
 def render_confirm(surface, state: State) -> None:
     pending = state.pending or {}
-    _header(surface, state, "confirm")
-    screen.write(surface, 3, 2, pending.get("heading", ""))
-    row = 5
+    top, left, _well, _width = _frame(
+        surface, state, "Models · Confirm", "y confirm · any other key cancel",
+    )
+    screen.write(surface, top, left + 1, pending.get("heading", ""),
+                 text.attr("danger"))
+    row = top + 2
     for line in str(pending.get("detail", "")).splitlines():
-        screen.write(surface, row, 2, line)
+        screen.write(surface, row, left + 1, line)
         row += 1
-    screen.write(surface, row + 1, 2,
+    screen.write(surface, row + 1, left + 1,
                  "The download runs in this terminal and can be interrupted;")
-    screen.write(surface, row + 2, 2,
+    screen.write(surface, row + 2, left + 1,
                  "it resumes from where it stopped when you run it again.")
-    _footer(surface, state, "y confirm · any other key cancel")
 
 
 SCREENS = {
@@ -298,6 +307,23 @@ def handle(key: int, state: State) -> bool:
         else:
             state.pending = None
             state.screen = "detail"
+        return True
+
+    if ord("1") <= key <= ord("4"):
+        index = key - ord("1")
+        if index == 3:
+            state.screen = "list"
+        else:
+            wanted = ("chat", "speech-to-text", "image")[index]
+            match = next(
+                (position for position, model in enumerate(state.models)
+                 if model.runtime.get("kind") == wanted),
+                None,
+            )
+            if match is not None:
+                state.selected = match
+                state.screen = "launch"
+        state.message = ""
         return True
 
     if screen.is_quit(key) and state.screen != "detail":

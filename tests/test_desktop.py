@@ -175,6 +175,15 @@ class ModelStoreStateTest(unittest.TestCase):
 
 
 class ModeSelectionTest(unittest.TestCase):
+    def test_text_tui_is_the_no_argument_default(self):
+        entry = load_entry()
+        with mock.patch.object(
+                entry.desktop, "run",
+                side_effect=AssertionError("pixel mode was consulted")), \
+             mock.patch.object(entry.tui, "main", return_value=7) as run:
+            self.assertEqual(entry.main([]), 7)
+        run.assert_called_once_with([])
+
     def test_screenshot_bypasses_graphics_and_writes_a_frame(self):
         entry = load_entry()
         with tempfile.TemporaryDirectory() as folder:
@@ -187,7 +196,9 @@ class ModeSelectionTest(unittest.TestCase):
             with open(path, encoding="utf-8") as handle:
                 frame = handle.read()
         self.assertIn("KILIX TUI", frame)
-        self.assertIn("BONSAI // DESKTOP", frame)
+        self.assertIn("Bonsai · Desktop", frame)
+        self.assertIn("▶1 Chat", frame.splitlines()[1])
+        self.assertNotIn("//", frame)
 
     def test_forced_graphics_without_the_shared_package_is_a_clean_error(self):
         error = io.StringIO()

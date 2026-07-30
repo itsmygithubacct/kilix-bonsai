@@ -172,9 +172,9 @@ def build_parser() -> argparse.ArgumentParser:
     # the parser rejects them before the desktop is ever consulted.
     rendering = parser.add_mutually_exclusive_group()
     rendering.add_argument("--graphics", action="store_true",
-                           help="force the pixel desktop")
+                           help="use the optional pixel desktop")
     rendering.add_argument("--text", action="store_true",
-                           help="force the text launcher")
+                           help="use the canonical text launcher (the default)")
     sub = parser.add_subparsers(dest="command")
 
     sub.add_parser("list", help="one line per model").set_defaults(
@@ -228,10 +228,10 @@ def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     args = build_parser().parse_args(argv)
     if args.command is None:
-        # Pixels first, the way the rest of this stack renders a desktop;
-        # the curses launcher is the floor for ssh, tmux and a bare console.
-        status = desktop.run(argv)
-        return tui.main(argv) if status is None else status
+        if args.graphics:
+            status = desktop.run(argv)
+            return tui.main(argv) if status is None else status
+        return tui.main(argv)
     return int(args.func(args))
 
 

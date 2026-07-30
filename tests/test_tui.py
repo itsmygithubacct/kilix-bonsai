@@ -153,6 +153,24 @@ class NavigationTest(unittest.TestCase):
 
 
 class ClippingTest(unittest.TestCase):
+    def test_every_store_screen_uses_the_canonical_kilix_shell(self) -> None:
+        built = state_with({"bonsai-8b"})
+        built.pending = {
+            "heading": "Download Bonsai",
+            "detail": "1 file",
+            "argv": ["pull.sh"],
+        }
+        for name in tui.SCREENS:
+            with self.subTest(screen=name):
+                built.screen = name
+                frame = screen.render_to_text(
+                    tui.render, built, height=24, width=100)
+                lines = frame.splitlines()
+                self.assertIn("KILIX TUI", lines[0])
+                self.assertIn("▶", lines[1])
+                self.assertTrue(lines[2].startswith("─"))
+                self.assertNotIn(" // ", frame)
+
     def test_every_screen_renders_at_any_size(self) -> None:
         built = state_with({"bonsai-8b"})
         tui.handle(ord("d"), built)          # leave a pending confirmation

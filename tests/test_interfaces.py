@@ -87,7 +87,7 @@ class LauncherRenderTest(unittest.TestCase):
         wide = screen.render_to_text(self.tui.render, self.state,
                                      height=30, width=100)
         self.assertIn("KILIX TUI", wide)
-        self.assertIn("OPEN A MODEL", wide)
+        self.assertIn("Open a model", wide)
         self.assertNotIn("▀", wide)
         self.assertNotIn("BONSAI 001", wide)
 
@@ -360,7 +360,9 @@ class VisualSystemTest(unittest.TestCase):
                                           self._state(name, module),
                                           height=26, width=96)
             self.assertIn("KILIX TUI", frame, name)
-            self.assertIn(module.PixelRenderer.area, frame, name)
+            self.assertIn(module.PixelRenderer.area.title(), frame, name)
+            self.assertIn("▶1", frame.splitlines()[1], name)
+            self.assertNotIn("//", frame, name)
             self.assertNotIn(" 001", frame, name)
 
     def test_each_tool_still_clips_at_every_size(self) -> None:

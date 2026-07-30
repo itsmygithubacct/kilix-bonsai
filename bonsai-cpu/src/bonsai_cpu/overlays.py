@@ -20,7 +20,7 @@ DIM = curses.A_DIM
 
 def render_list(surface, state) -> None:
     top, bottom, width = layout.shell(
-        surface, breadcrumb="Chats / Saved conversations", active=0,
+        surface, breadcrumb="Chats · Saved conversations", active=0,
         status=state.loading or state.status,
         footer="Enter open · n new · d delete · Ctrl-Q quit")
     rows = [("[ new conversation ]", "", "")]
@@ -34,8 +34,8 @@ def render_list(surface, state) -> None:
     first = max(0, min(state.selected - visible + 1, len(rows) - visible))
     for row, (name, model, detail) in enumerate(rows[first:first + visible]):
         index = first + row
-        marker = "▸ " if index == state.selected else "  "
-        attr = BOLD if index == state.selected else 0
+        marker = "▶ " if index == state.selected else "  "
+        attr = layout.attr("selected") if index == state.selected else 0
         line = f"{marker}{name}"
         screen.write(surface, top + row, 0, line, attr)
         tail = f"{model}  {detail}".strip()
@@ -45,7 +45,7 @@ def render_list(surface, state) -> None:
 
 def render_picker(surface, state) -> None:
     top, bottom, width = layout.shell(
-        surface, breadcrumb="Models / Switch model", active=2,
+        surface, breadcrumb="Models · Switch model", active=2,
         status=state.loading or state.status,
         footer="Enter switch · Esc back — switching restarts the server")
     ids = sorted(models.MODELS)
@@ -53,9 +53,9 @@ def render_picker(surface, state) -> None:
         if top + row >= bottom:
             break
         spec = models.MODELS[model_id]
-        marker = "▸ " if row == state.selected else "  "
+        marker = "▶ " if row == state.selected else "  "
         current = " (current)" if model_id == state.convo.model_id else ""
-        attr = BOLD if row == state.selected else 0
+        attr = layout.attr("selected") if row == state.selected else 0
         screen.write(surface, top + row, 0,
                      f"{marker}{spec['title']}{current}", attr)
         note = spec.get("speed_note", "")
@@ -67,7 +67,7 @@ def render_params(surface, state) -> None:
     hint = ("Enter commit · Esc cancel" if state.param_editor is not None
             else "Enter edit · Esc back")
     top, bottom, width = layout.shell(
-        surface, breadcrumb="Settings / Conversation", active=3,
+        surface, breadcrumb="Settings · Conversation", active=3,
         status=state.loading or state.status, footer=hint)
     from .chat_tui import PARAM_FIELDS
     for row, field in enumerate(PARAM_FIELDS):
@@ -75,7 +75,7 @@ def render_params(surface, state) -> None:
             break
         editing = (state.param_editor is not None
                    and row == state.param_index)
-        marker = "▸ " if row == state.param_index else "  "
+        marker = "▶ " if row == state.param_index else "  "
         if editing:
             visible, _ = state.param_editor.view(max(1, width - 16))
             value = visible + "▏"
@@ -83,7 +83,8 @@ def render_params(surface, state) -> None:
             value = str(state.convo.params[field])
         label = f"{marker}{field:<12}"
         screen.write(surface, top + row, 0, label,
-                     BOLD if row == state.param_index else 0)
+                     layout.attr("selected")
+                     if row == state.param_index else 0)
         screen.write(surface, top + row, len(label),
                      value[: max(0, width - len(label) - 1)])
 
@@ -104,7 +105,7 @@ HELP_ROWS = (
 
 def render_help(surface, state) -> None:
     top, bottom, _width = layout.shell(
-        surface, breadcrumb="Help / Keyboard", active=4,
+        surface, breadcrumb="Help · Keyboard", active=4,
         status="", footer="any key returns")
     for row, (key, action) in enumerate(HELP_ROWS):
         if top + row >= bottom:
@@ -124,7 +125,7 @@ def render_loading(surface, state) -> None:
 
 def render_error(surface, state) -> None:
     row, bottom, width = layout.shell(
-        surface, breadcrumb="Chat / Server error", active=1,
+        surface, breadcrumb="Chat · Server error", active=1,
         status="", footer="r retry · q quit · any other key back")
     for line in widgets.wrap(state.error, max(1, width - 1)):
         if row >= bottom:

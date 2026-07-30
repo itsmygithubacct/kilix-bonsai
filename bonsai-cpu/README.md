@@ -100,13 +100,13 @@ reports what the server measured, not what the UI hoped: tok/s, context
 used, and during long prompts a `processing prompt… 812/2313 (cached
 1501)` account of where the wait is going.
 
-In a Kilix/Kitty window the chat uses the same Tango pixel language as
-`kilix-tui`: blue sidebar navigation, one quiet content card, large raster
-type, and red reserved for errors. That treatment covers conversations,
-models, settings, help, loading and the live transcript rather than stopping
-at a launcher. `--text` selects the compact fallback; `--graphics` requires
-the pixel path and reports why it cannot start. The pixel path finds the
-workspace's `kilix-tui-utils` checkout or uses `KILIX_TUI_UTILS_HOME`.
+The chat defaults to the canonical Kilix text TUI: the same `KILIX TUI`
+header, numbered navigation, divider, status row, body, and footer used by the
+VirtualBox manager and Kilix Bonsai. That treatment covers conversations,
+models, settings, help, loading, and the live transcript. `--graphics`
+explicitly requests the optional pixel path and reports why it cannot start.
+The pixel path finds the workspace's
+`kilix-tui-utils` checkout or uses `KILIX_TUI_UTILS_HOME`.
 
 Conversations are saved as they happen and listed on start; opening one
 brings its model up with the load narrated on screen. Each conversation

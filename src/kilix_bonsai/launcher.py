@@ -5,9 +5,9 @@ a `runtime.kind` — chat, image, speech-to-text — and that is what selects th
 tool, so a new model arrives with its own answer rather than needing a case
 added here.
 
-The default graphical launcher is supplied by :mod:`kilix_bonsai.desktop`.
-This renderer is the SSH and small-terminal floor and therefore follows the
-same quiet Kilix layout without attempting terminal pixel art.
+This canonical text renderer is the default in every terminal. The optional
+graphical launcher supplied by :mod:`kilix_bonsai.desktop` is available only
+when explicitly requested.
 """
 from __future__ import annotations
 
@@ -87,13 +87,15 @@ def render(surface, state) -> None:
         if row >= min(height - 2, top + well_height):
             break
         ok, detail = launchable(model)
-        marker = ">" if index == state.selected else " "
+        selected_row = index == state.selected
+        marker = "▶" if selected_row else " "
         kind = model.runtime.get("kind", "—")
         name = f"{marker} {model.title}"
         hint = f"{kind} · {detail}"
-        screen.write(surface, row, left, name[:list_width])
+        row_attr = text.attr("selected") if selected_row else 0
+        screen.write(
+            surface, row, left, name.ljust(list_width)[:list_width], row_attr)
         if len(name) + len(hint) + 3 < list_width:
             screen.write(surface, row, left + list_width - len(hint) - 1,
-                         hint)
+                         hint, row_attr)
         row += 1
-

@@ -235,7 +235,7 @@ def main():
         help="require the Kilix pixel interface")
     display.add_argument(
         "--text", action="store_true",
-        help="require the portable text interface")
+        help="use the canonical text interface (the default)")
 
     p = add("serve", cmd_serve, "OpenAI-compatible server (llama-server)")
     p.add_argument("--host", default="127.0.0.1")

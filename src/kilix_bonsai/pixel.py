@@ -248,7 +248,7 @@ class Renderer:
         small = self.graphics.font_for(11 * scale)
         draw.text((pad, 0, width // 2, height - 4), "KILIX TUI", title,
                   self.tango.WHITE)
-        strap = f"BONSAI  //  {self.area.upper()}"
+        strap = f"BONSAI · {self.area.upper()}"
         draw.text((pad + title.width("KILIX TUI") + pad, 0,
                    width - pad - small.width(clock) - pad, height - 4),
                   strap, small, self.tango.GREY)
@@ -530,11 +530,13 @@ def run(argv: list[str], renderer: Renderer | Callable[[], Renderer],
         state: Any,
         handle: Callable[[int, Any], bool], *, tick_ms: int,
         command: str) -> int | None:
-    """Run pixels, return ``None`` when the text path should be used."""
+    """Run explicitly requested pixels, otherwise use the canonical text TUI."""
     if ("--text" in argv or "--screenshot" in argv
             or os.environ.get("KILIX_TUI_HEADLESS") == "1"):
         return None
     forced = "--graphics" in argv
+    if not forced:
+        return None
     modules = shared()
     if modules is None:
         if forced:

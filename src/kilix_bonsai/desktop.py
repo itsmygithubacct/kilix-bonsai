@@ -6,10 +6,9 @@ approximation. The Models section drills into every model and exposes the same
 variants, dependency install, verification, and launch actions as the
 self-contained text TUI.
 
-The dependency remains optional. `run()` returns ``None`` when pixels are not
-appropriate, when ``--text`` or ``--screenshot`` asks for the text path, or
-when the shared utilities are absent. The command then runs the repository's
-existing text TUI, preserving the bare-checkout and SSH floor.
+The dependency remains optional and pixel mode is explicit. `run()` returns
+``None`` unless ``--graphics`` requested it; the command otherwise runs the
+repository's canonical text TUI.
 """
 from __future__ import annotations
 
@@ -220,14 +219,16 @@ def build_state() -> Any:
 
 
 def run(argv: list[str]) -> int | None:
-    """Run the pixel desktop, or return None when it is not possible.
+    """Run the explicitly requested pixel desktop.
 
-    None means "not available", not "failed" — the caller falls back to the
-    text launcher, which is the floor rather than an error.
+    None means the canonical text TUI should be used.  Pixel rendering remains
+    available through ``--graphics`` but is never selected automatically.
     """
     if "--text" in argv or "--screenshot" in argv:
         return None
     forced = "--graphics" in argv
+    if not forced:
+        return None
     desk = shared()
     if desk is None:
         if forced:

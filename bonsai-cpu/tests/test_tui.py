@@ -193,7 +193,9 @@ class ChatRenderTest(unittest.TestCase):
         state = chat_state(self.tmp.name)
         frame = self.render_all_sizes(state)
         self.assertIn("KILIX TUI", frame)
-        self.assertIn("[Conversation]", frame)
+        self.assertIn("▶2 Conversation", frame.splitlines()[1])
+        self.assertTrue(frame.splitlines()[2].startswith("─"))
+        self.assertNotIn(" // ", frame)
         self.assertNotIn("bonsai-cpu chat ·", frame)
 
 
