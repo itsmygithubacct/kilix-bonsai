@@ -106,14 +106,14 @@ def free_vram_mib(backend: str = LOCAL, timeout: float = 30.0) -> int | None:
 
 
 def cpu_runtime() -> str | None:
-    """Return the CPU runner, or None when it is not installed.
+    """Return the CPU runner, or None when it is unavailable.
 
     Upstream llama.cpp learned `Q1_0` in April 2026, so a CPU path exists that
     needs no vendor build and no card at all. It is slower by an order of
     magnitude — around 8 t/s for 8B against 131 on a GPU — but "slow" beats
     "no chat on this machine", which was the previous answer. GUI launchers do
-    not always inherit the user's local bin directory, so check the companion
-    installer's standard prefix after PATH.
+    not always inherit the user's local bin directory, so check the standard
+    prefix and then this repository's bundled runner after PATH.
     """
     found = shutil.which("bonsai-cpu")
     if found is not None:
@@ -121,8 +121,13 @@ def cpu_runtime() -> str | None:
     prefix = os.environ.get(
         "BONSAI_CPU_PREFIX", os.path.join(os.path.expanduser("~"), ".local"))
     candidate = os.path.join(prefix, "bin", "bonsai-cpu")
-    return candidate if os.path.isfile(candidate) and os.access(
-        candidate, os.X_OK) else None
+    if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+        return candidate
+    root = os.path.dirname(os.path.dirname(os.path.dirname(
+        os.path.dirname(os.path.abspath(__file__)))))
+    bundled = os.path.join(root, "bonsai-cpu", "bin", "bonsai-cpu")
+    return bundled if os.path.isfile(bundled) and os.access(
+        bundled, os.X_OK) else None
 
 
 def needs_mib(model_id: str) -> int:

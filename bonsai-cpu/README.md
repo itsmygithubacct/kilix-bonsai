@@ -1,11 +1,12 @@
 # bonsai-cpu
 
-Run the 1-bit Bonsai models on CPU. No GPU, no cloud, no fork — upstream
-llama.cpp at a pinned commit, built CPU-only, driven by one small command
-that knows what these checkpoints are.
+The CPU runtime bundled in [`kilix-bonsai`](..). Run the 1-bit Bonsai models
+without a GPU, cloud, or fork: upstream llama.cpp at a pinned commit, built
+CPU-only, driven by one small command that knows what these checkpoints are.
 
 ```sh
-./install.sh                 # bonsai-cpu into ~/.local/bin
+../install.sh                # install the complete kilix-bonsai command set
+./install.sh                 # install only bonsai-cpu
 bonsai-cpu build             # fetch the pinned runtime and compile it
 bonsai-cpu run "Name three trees."
 ```
@@ -104,8 +105,8 @@ In a Kilix/Kitty window the chat uses the same Tango pixel language as
 type, and red reserved for errors. That treatment covers conversations,
 models, settings, help, loading and the live transcript rather than stopping
 at a launcher. `--text` selects the compact fallback; `--graphics` requires
-the pixel path and reports why it cannot start. The pixel path finds
-`kilix-tui-utils` alongside the checkout or through `KILIX_TUI_UTILS_HOME`.
+the pixel path and reports why it cannot start. The pixel path finds the
+workspace's `kilix-tui-utils` checkout or uses `KILIX_TUI_UTILS_HOME`.
 
 Conversations are saved as they happen and listed on start; opening one
 brings its model up with the load narrated on screen. Each conversation
@@ -164,5 +165,5 @@ absolute home path anywhere under version control.
 
 ## Versioning
 
-`0.1.0`. Not yet part of any coordinated stack release; local repository
-for now.
+`0.1.0`. This component is versioned with its owning `kilix-bonsai`
+repository.

@@ -10,20 +10,28 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
 
 
 def main() -> int:
-    names = sorted(
-        name for name in os.listdir(HERE)
+    suites = [
+        (name, os.path.join(HERE, name))
+        for name in sorted(os.listdir(HERE))
         if name.startswith("test_") and name.endswith(".py")
-    )
+    ]
+    cpu_runner = os.path.join(ROOT, "bonsai-cpu", "tests", "run.py")
+    if os.path.isfile(cpu_runner):
+        suites.append(("bonsai-cpu", cpu_runner))
     if sys.argv[1:]:
-        names = [n for n in names if any(a in n for a in sys.argv[1:])]
+        suites = [
+            suite for suite in suites
+            if any(argument in suite[0] for argument in sys.argv[1:])
+        ]
     failed = []
-    for name in names:
+    for name, path in suites:
         env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
         result = subprocess.run(
-            [sys.executable, os.path.join(HERE, name)],
+            [sys.executable, path],
             capture_output=True, text=True, env=env,
         )
         if result.returncode == 0:
@@ -33,7 +41,7 @@ def main() -> int:
             print(f"FAIL  {name}")
             for line in (result.stdout + result.stderr).splitlines():
                 print(f"  {line}")
-    print(f"{len(names) - len(failed)}/{len(names)} passed")
+    print(f"{len(suites) - len(failed)}/{len(suites)} passed")
     return 1 if failed else 0
 
 

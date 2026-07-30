@@ -1,8 +1,9 @@
 # kilix-bonsai
 
 Every BitNet model this stack can run, in one place: one folder per model, each
-self-describing, each with its own dependency and download scripts, and one
-terminal UI over all of them.
+self-describing, each with its own dependency and download scripts, one
+terminal UI over all of them, and the bundled `bonsai-cpu` runtime for direct
+CPU inference.
 
 ```sh
 kilix bonsai                       # the launcher, the store, and the interfaces
@@ -23,7 +24,7 @@ downloads, dependency installation, verification, and launching available.
 reports a clean error when the terminal cannot provide them. `--screenshot`
 always captures the portable text rendering.
 
-## Four interfaces
+## Interfaces and CPU runtime
 
 | Command | For | What it does |
 |---|---|---|
@@ -31,6 +32,7 @@ always captures the portable text rendering.
 | `kilix-bonsai-chat` | the 1-bit text models | On a GPU, streams one vendor process per turn; on CPU, opens bonsai-cpu's resident, persistent chat |
 | `kilix-bonsai-image` | Bonsai Image 4B | Prompt, reference image, seed, size and steps; a gallery that records what produced each result and can feed one back in |
 | `kilix-bonsai-speech` | VibeVoice ASR BitNet | Record or point at a WAV; transcript grows chunk by chunk; copy or write it out |
+| `bonsai-cpu` | Bonsai 8B and 27B | Pinned upstream llama.cpp, CPU-only build, resident chat, one-shot inference, serving, and benchmarks |
 
 The launcher and all three task interfaces use the Tango pixel desktop from
 `kilix-tui-utils` by default: the same blue navigation, quiet content card,
@@ -106,7 +108,7 @@ ship with it.
 | `KILIX_BONSAI_NOTARY_HOME` | Vendor runtime's state root (regular 8B) |
 | `KILIX_BONSAI_PRISM_BIN` | Pinned vendor binary directory (regular 8B) |
 | `KILIX_BONSAI_8B_GGUF` | Path to the 8B weights on the running host |
-| `BONSAI_CPU_PREFIX` | Companion CPU tool's install prefix when it is not on PATH (default `~/.local`) |
+| `BONSAI_CPU_PREFIX` | Bundled CPU tool's install prefix when it is not on PATH (default `~/.local`) |
 | `KILIX_BONSAI_IMAGE_REMOTE` | Image scaffold's remote subcommand |
 | `KILIX_TUI_UTILS_HOME` | Where to find the shared pixel renderer, if not alongside |
 
@@ -118,8 +120,9 @@ guessed from a stack trace.
 ## Runtimes
 
 Nothing here reimplements inference. On a GPU, chat drives the pinned vendor
-launchers, one process per turn. On CPU it delegates to `bonsai-cpu`, whose
-pinned upstream `llama-server` remains resident behind the full chat TUI.
+launchers, one process per turn. On CPU it delegates to the bundled
+`bonsai-cpu/` component, whose pinned upstream `llama-server` remains resident
+behind the full chat TUI.
 Speech drives VibeASR's `asr_infer`, and images drive the image scaffold's own
 CLI, local or remote. Each backend is *probed* rather than assumed — an
 interface that cannot run says so on its first screen instead of failing
@@ -136,7 +139,7 @@ reading about them:
   `Q1_0` was not a ggml tensor type at that revision, so the original working
   path used the vendor engine; a separate deterministic integer engine can
   still import the GGUF and produce byte-identical receipts. Upstream
-  llama.cpp learned `Q1_0` in April 2026, and `bonsai-cpu` now pins and owns
+  llama.cpp learned `Q1_0` in April 2026, and `bonsai-cpu/` now pins and owns
   that direct CPU path. The BitNet `I2_S` checkpoint is a separate case again
   and wants `bitnet.cpp`. The standalone `scripts/build-runtime.sh` is
   therefore a reference build, not a chat backend selected automatically.
@@ -223,12 +226,13 @@ the system runs without a confirmation, and every screen clips cleanly down to
 ## Install
 
 ```sh
-./install.sh                       # kilix-bonsai into ~/.local/bin
+./install.sh                       # all five commands into ~/.local/bin
 KILIX_BONSAI_PREFIX=/usr/local ./install.sh
 ```
 
-The command is a launcher that runs the tool from this checkout, so updating is
-a `git pull` rather than a reinstall.
+The commands are launchers that run the tools from this checkout, including
+`bonsai-cpu/bin/bonsai-cpu`, so updating is a `git pull` rather than a
+reinstall.
 
 ## Versioning
 
