@@ -106,7 +106,7 @@ VirtualBox manager and Kilix Bonsai. That treatment covers conversations,
 models, settings, help, loading, and the live transcript. `--graphics`
 explicitly requests the optional pixel path and reports why it cannot start.
 The pixel path finds the workspace's
-`kilix-tui-utils` checkout or uses `KILIX_TUI_UTILS_HOME`.
+`kilix-desktops/kilix-tui-utils` checkout or uses `KILIX_TUI_UTILS_HOME`.
 
 Conversations are saved as they happen and listed on start; opening one
 brings its model up with the load narrated on screen. Each conversation

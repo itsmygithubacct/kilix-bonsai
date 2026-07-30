@@ -377,7 +377,7 @@ class VisualSystemTest(unittest.TestCase):
 
     @unittest.skipUnless(
         os.path.isdir(os.path.expanduser(
-            "~/.local/gpu_terminal/sources/kilix-tui-utils/src/kilix_desk")),
+            "~/.local/gpu_terminal/sources/kilix-desktops/kilix-tui-utils/src/kilix_desk")),
         "kilix-tui-utils is not alongside this checkout")
     def test_each_pixel_interface_renders_the_shared_frame(self) -> None:
         for name in self.TOOLS:

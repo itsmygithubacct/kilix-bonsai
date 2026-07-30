@@ -38,7 +38,7 @@ def shared() -> Any | None:
         os.path.expanduser("~"), "gpu_terminal")
     for home in (os.environ.get("KILIX_TUI_UTILS_HOME", ""),
                  os.path.join(os.path.abspath(os.path.expanduser(source_home)),
-                              "kilix-tui-utils")):
+                              "kilix-desktops", "kilix-tui-utils")):
         source = os.path.join(home, "src") if home else ""
         if source and os.path.isdir(os.path.join(source, "kilix_desk")):
             if source not in sys.path:

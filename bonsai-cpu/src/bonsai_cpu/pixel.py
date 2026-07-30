@@ -42,9 +42,8 @@ def shared() -> tuple[Any, Any] | None:
     homes = (
         os.environ.get("KILIX_TUI_UTILS_HOME", ""),
         os.path.join(os.path.abspath(os.path.expanduser(source_home)),
-                     "kilix-tui-utils"),
-        str(repository.parents[1] / "kilix-tui-utils"),
-        str(repository.parent / "kilix-tui-utils"),
+                     "kilix-desktops", "kilix-tui-utils"),
+        str(repository.parents[2] / "kilix-desktops" / "kilix-tui-utils"),
     )
     for home in homes:
         source = os.path.join(home, "src") if home else ""
