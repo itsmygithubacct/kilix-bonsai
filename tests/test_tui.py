@@ -130,24 +130,100 @@ class CpuRuntimeBuildTest(unittest.TestCase):
         import inspect
         self.assertIn("offer_cpu_build", inspect.getsource(tui.State.launch))
 
-    def test_a_pending_build_is_offered_behind_the_standard_confirm(self) -> None:
-        built = self._chat_state()
-        saved = (tui.chat.cpu_fallback_pending_build, tui.chat.cpu_runtime)
+    def _offer(self, built: tui.State, *, missing: tuple[str, ...] = (),
+               apt: bool = True) -> bool:
+        saved = (tui.chat.cpu_fallback_pending_build, tui.chat.cpu_runtime,
+                 tui.chat.cpu_build_missing_packages, tui.shutil.which)
         tui.chat.cpu_fallback_pending_build = lambda: True
         tui.chat.cpu_runtime = lambda: "/usr/bin/bonsai-cpu"
+        tui.chat.cpu_build_missing_packages = lambda: missing
+        tui.shutil.which = lambda name: (
+            "/usr/bin/apt-get" if apt and name == "apt-get" else None)
         try:
-            offered = built.offer_cpu_build(built.model)
+            return built.offer_cpu_build(built.model)
         finally:
-            (tui.chat.cpu_fallback_pending_build,
-             tui.chat.cpu_runtime) = saved
-        self.assertTrue(offered)
+            (tui.chat.cpu_fallback_pending_build, tui.chat.cpu_runtime,
+             tui.chat.cpu_build_missing_packages, tui.shutil.which) = saved
+
+    def test_a_pending_build_is_offered_behind_the_standard_confirm(self) -> None:
+        built = self._chat_state()
+        self.assertTrue(self._offer(built))
         self.assertEqual(built.screen, "confirm")
         self.assertEqual(built.pending["argv"], ["/usr/bin/bonsai-cpu", "build"])
+        # Accepting is a launch attempt, so success must open chat.
+        self.assertIs(built.pending["then_launch"], built.model)
         text = screen.render_to_text(tui.render, built)
         # The invariant: what it costs is on screen before the confirmation.
         self.assertIn("compiles", text)
         self.assertIn("git clone", text)
         self.assertIn("y confirm", text)
+        # And no download-only promise on a compile.
+        self.assertNotIn("resumes from where it stopped", text)
+
+    def test_missing_build_tools_are_priced_into_the_offer(self) -> None:
+        # The fresh-box shape: build-essential provisioned, cmake absent. The
+        # offer must install the named packages first, in the same confirm,
+        # rather than run a build that refuses after the clone.
+        built = self._chat_state()
+        self.assertTrue(self._offer(built, missing=("cmake",)))
+        self.assertEqual(built.screen, "confirm")
+        self.assertEqual(
+            built.pending["steps"],
+            [["sudo", "apt-get", "install", "-y", "--", "cmake"],
+             ["/usr/bin/bonsai-cpu", "build"]])
+        self.assertIs(built.pending["then_launch"], built.model)
+        text = screen.render_to_text(tui.render, built)
+        self.assertIn("cmake", text)
+        self.assertIn("sudo apt-get install", text)
+        self.assertIn("y confirm", text)
+
+    def test_no_apt_means_a_refusal_with_the_words(self) -> None:
+        # Not a Debian machine and the tools are missing: nothing honest to
+        # run, so the launch is blocked with the remedy named instead of a
+        # confirm screen whose yes would fail.
+        built = self._chat_state()
+        self.assertTrue(self._offer(built, missing=("cmake",), apt=False))
+        self.assertIsNone(built.pending)
+        self.assertNotEqual(built.screen, "confirm")
+        self.assertIn("cmake", built.message)
+        self.assertIn("package manager", built.message)
+
+    def test_confirm_runs_the_steps_in_order_and_stops_on_failure(self) -> None:
+        ran: list[list[str]] = []
+        saved = tui.provision.run
+
+        def fake_run(argv, cwd=None):
+            ran.append(list(argv))
+            return 1 if argv[0] == "falls-over" else 0
+
+        tui.provision.run = fake_run
+        try:
+            built = self._chat_state()
+            built.pending = {"heading": "x", "detail": "", "argv": ["a"],
+                             "steps": [["falls-over"], ["never-runs"]],
+                             "then_launch": None}
+            built.screen = "confirm"
+            built.confirm()
+        finally:
+            tui.provision.run = saved
+        self.assertEqual(ran, [["falls-over"]])
+        self.assertIn("exited 1", built.message)
+
+    def test_a_successful_confirmed_build_launches_chat(self) -> None:
+        launched: list[str] = []
+        saved_run = tui.provision.run
+        tui.provision.run = lambda argv, cwd=None: 0
+        try:
+            built = self._chat_state()
+            model = built.model
+            built.launch = lambda m: launched.append(m.id)  # type: ignore
+            built.pending = {"heading": "x", "detail": "", "argv": ["ok"],
+                             "steps": None, "then_launch": model}
+            built.screen = "confirm"
+            built.confirm()
+        finally:
+            tui.provision.run = saved_run
+        self.assertEqual(launched, [model.id])
 
     def test_no_offer_when_nothing_is_pending(self) -> None:
         built = self._chat_state()

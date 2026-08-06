@@ -65,6 +65,13 @@ def model_extra(args):
 
 
 def cmd_build(args):
+    missing = models.missing_build_packages()
+    if missing:
+        # Refused before the fetch: cloning llama.cpp only to die on a
+        # missing compiler wastes the network and buries the real reason.
+        die("cannot build yet — missing: " + ", ".join(missing)
+            + "\n            install them first (Debian:  sudo apt-get install "
+            + " ".join(missing) + "), then rerun:  bonsai-cpu build", 4)
     scripts = os.path.join(REPO_DIR, "scripts")
     for script in ("get-runtime.sh", "build-runtime.sh"):
         rc = subprocess.call([os.path.join(scripts, script)])

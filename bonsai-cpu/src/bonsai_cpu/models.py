@@ -133,3 +133,30 @@ def binary(name: str) -> str:
         raise ModelError(
             f"runtime not built ({path} missing) — run: bonsai-cpu build")
     return path
+
+
+# What `bonsai-cpu build` runs, and the Debian package that provides each
+# tool. The compiler row accepts any of the three names cmake would find; the
+# package column is what a refusal should tell a Debian operator to install.
+# Plebian-OS provisions build-essential but not cmake, so on a fresh box the
+# missing one is almost always cmake — the probe reports whatever is absent
+# rather than assuming.
+BUILD_TOOLS = (
+    (("git",), "git"),
+    (("cmake",), "cmake"),
+    (("c++", "g++", "clang++"), "build-essential"),
+)
+
+
+def missing_build_packages() -> tuple[str, ...]:
+    """Debian packages for the build tools this machine is missing.
+
+    Checked *before* the fetch, not discovered by the build: without this a
+    doomed `bonsai-cpu build` clones a few hundred megabytes of llama.cpp and
+    then dies on one line of stderr, which reads as \"the build silently did
+    nothing\" from a TUI.
+    """
+    import shutil
+    return tuple(
+        package for names, package in BUILD_TOOLS
+        if not any(shutil.which(name) for name in names))

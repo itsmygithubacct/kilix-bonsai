@@ -54,7 +54,11 @@ if [ "$check_only" = 1 ]; then
   exit 1
 fi
 
-command -v cmake >/dev/null 2>&1 || die "cmake is required"
+command -v cmake >/dev/null 2>&1 \
+  || die "cmake is required — on Debian:  sudo apt-get install cmake"
+command -v c++ >/dev/null 2>&1 || command -v g++ >/dev/null 2>&1 \
+  || command -v clang++ >/dev/null 2>&1 \
+  || die "no C++ compiler — on Debian:  sudo apt-get install build-essential"
 [ -d "$SRC_DIR" ] || die "no runtime source — run scripts/get-runtime.sh first"
 
 jobs="${BONSAI_CPU_BUILD_JOBS:-$(nproc)}"

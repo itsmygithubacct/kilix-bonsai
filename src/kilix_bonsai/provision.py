@@ -84,11 +84,27 @@ def terminal(state: Any, heading: str):
 def run_detached_from_curses(state: Any, argv: Sequence[str],
                              heading: str) -> int:
     """Suspend curses, run a script on the real terminal, then resume."""
+    return run_steps_detached_from_curses(state, [argv], heading)
+
+
+def run_steps_detached_from_curses(state: Any,
+                                   argvs: Sequence[Sequence[str]],
+                                   heading: str) -> int:
+    """Run several commands under one terminal handover, stopping at failure.
+
+    One handover, not one per command: a confirmed offer that needs two steps
+    (install the build tools, then build) must not bounce through
+    \"press Enter to return\" in the middle, and a failed first step must not
+    run the second — that would bury the failure under the follow-on error.
+    """
     status = 127
     with terminal(state, heading):
-        status = run(argv)
-        if status == 0:
-            print("\ndone.")
+        for argv in argvs:
+            print(f"\n$ {' '.join(argv)}\n")
+            status = run(argv)
+            if status != 0:
+                print(f"\n{os.path.basename(argv[0])} exited {status}.")
+                break
         else:
-            print(f"\n{os.path.basename(argv[0])} exited {status}.")
+            print("\ndone.")
     return status

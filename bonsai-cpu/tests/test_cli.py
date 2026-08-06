@@ -117,6 +117,25 @@ def main():
         check(r.returncode == 2 and "not allowed with" in r.stderr,
               "chat rendering modes are mutually exclusive")
 
+        # build refuses BEFORE fetching when the toolchain is missing, and
+        # names the Debian packages. Discovered the expensive way: a box
+        # provisioned without cmake cloned llama.cpp and then died on one
+        # stderr line, which read as "the build did nothing" from a TUI.
+        bare = os.path.join(tmp, "bare-bin")
+        os.makedirs(bare)
+        for tool in ("git",):  # git present, cmake and any c++ absent
+            with open(os.path.join(bare, tool), "w") as fh:
+                fh.write("#!/bin/sh\nexit 0\n")
+            os.chmod(os.path.join(bare, tool), 0o755)
+        r = run(["build"], {**base, "PATH": bare})
+        check(r.returncode == 4, f"toolchain-less build refuses: rc={r.returncode}")
+        check("cmake" in r.stderr and "build-essential" in r.stderr,
+              f"refusal names the missing packages: {r.stderr!r}")
+        check("apt-get install" in r.stderr,
+              f"refusal names the install command: {r.stderr!r}")
+        check(not os.path.isdir(os.path.join(runtime, "llama.cpp")),
+              "no clone happens before a doomed build")
+
         # doctor reports rather than crashes, whatever the machine has.
         r = run(["doctor"], base)
         check(r.returncode in (0, 1) and "doctor" in r.stdout,

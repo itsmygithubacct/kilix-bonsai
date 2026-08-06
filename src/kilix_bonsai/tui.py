@@ -15,6 +15,7 @@ fetches a byte itself.
 from __future__ import annotations
 
 import os
+import shutil
 import sys
 
 from . import launcher, provision, screen, store, text
@@ -88,9 +89,19 @@ class State:
 
     # -- actions ------------------------------------------------------------
 
-    def ask(self, heading: str, detail: str, argv: list[str]) -> None:
-        """Put an action behind a confirmation showing what it will cost."""
-        self.pending = {"heading": heading, "detail": detail, "argv": argv}
+    def ask(self, heading: str, detail: str, argv: list[str], *,
+            steps: list[list[str]] | None = None,
+            then_launch: Model | None = None) -> None:
+        """Put an action behind a confirmation showing what it will cost.
+
+        `steps` puts more than one command behind the single confirmation —
+        each must be named in `detail`, since the invariant is that the whole
+        cost is on screen before the yes. `then_launch` re-launches a model
+        after the steps succeed, for offers that exist only because a launch
+        was blocked on them.
+        """
+        self.pending = {"heading": heading, "detail": detail, "argv": argv,
+                        "steps": steps, "then_launch": then_launch}
         self.screen = "confirm"
 
     def confirm(self) -> None:
@@ -99,11 +110,15 @@ class State:
         self.screen = "detail"
         if pending is None:
             return
-        status = provision.run_detached_from_curses(
-            self, pending["argv"], pending["heading"])
+        steps = pending.get("steps") or [pending["argv"]]
+        status = provision.run_steps_detached_from_curses(
+            self, steps, pending["heading"])
         self.refresh()
         self.message = (pending["heading"] + (" — done" if status == 0
                                               else f" — exited {status}"))
+        model = pending.get("then_launch")
+        if status == 0 and model is not None:
+            self.launch(model)
 
     def download(self, model: Model, variant: Variant) -> None:
         state = self.state_of(model, variant)
@@ -149,14 +164,43 @@ class State:
         runner = chat.cpu_runtime()
         if runner is None:
             return False
-        self.ask(
-            "Build the bonsai-cpu runtime",
+        missing = chat.cpu_build_missing_packages()
+        preamble = (
             "no usable GPU here, so chat runs on the CPU via bonsai-cpu,\n"
-            "whose pinned llama.cpp runtime is not built yet. Confirming\n"
-            "fetches the pinned llama.cpp checkout (a git clone) and\n"
-            "compiles it — minutes of CPU time and some disk.\n"
-            f"runs: {runner} build",
-            [runner, "build"])
+            "whose pinned llama.cpp runtime is not built yet.\n")
+        if not missing:
+            self.ask(
+                "Build the bonsai-cpu runtime",
+                preamble +
+                "Confirming fetches the pinned llama.cpp checkout\n"
+                "(a git clone) and compiles it — minutes of CPU time\n"
+                "and some disk — then opens chat.\n"
+                f"runs: {runner} build",
+                [runner, "build"], then_launch=model)
+            return True
+        if shutil.which("apt-get") is None:
+            # Nothing honest to offer: the tools are missing and this is not
+            # a machine whose package names we know. Refuse with the words.
+            self.message = (f"cannot build the CPU runtime: missing "
+                            f"{', '.join(missing)} — install them with your "
+                            f"package manager, then reopen {model.title}")
+            return True
+        packages = " ".join(missing)
+        self.ask(
+            "Install the build tools, then build the bonsai-cpu runtime",
+            preamble +
+            f"Building it needs system packages this machine is missing:\n"
+            f"  {', '.join(missing)}\n"
+            "Confirming installs them with sudo apt-get (you may be\n"
+            "asked for your password), then fetches the pinned llama.cpp\n"
+            "checkout (a git clone) and compiles it — minutes of CPU time\n"
+            "and some disk — then opens chat.\n"
+            f"runs: sudo apt-get install {packages}\n"
+            f"then: {runner} build",
+            [runner, "build"],
+            steps=[["sudo", "apt-get", "install", "-y", "--", *missing],
+                   [runner, "build"]],
+            then_launch=model)
         return True
 
     def install_deps(self, model: Model) -> None:
@@ -314,10 +358,18 @@ def render_confirm(surface, state: State) -> None:
     for line in str(pending.get("detail", "")).splitlines():
         screen.write(surface, row, left + 1, line)
         row += 1
-    screen.write(surface, row + 1, left + 1,
-                 "The download runs in this terminal and can be interrupted;")
-    screen.write(surface, row + 2, left + 1,
-                 "it resumes from where it stopped when you run it again.")
+    if str((pending.get("argv") or [""])[0]).endswith("pull.sh"):
+        # Only a download may promise resumption; a compile restarted after
+        # an interrupt redoes work, and saying otherwise would be a lie.
+        screen.write(surface, row + 1, left + 1,
+                     "The download runs in this terminal and can be "
+                     "interrupted;")
+        screen.write(surface, row + 2, left + 1,
+                     "it resumes from where it stopped when you run it again.")
+    else:
+        screen.write(surface, row + 1, left + 1,
+                     "It runs in this terminal, output in the open; "
+                     "Ctrl-C interrupts.")
 
 
 SCREENS = {

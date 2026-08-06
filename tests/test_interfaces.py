@@ -510,6 +510,28 @@ class CpuFallbackTest(unittest.TestCase):
                 else:
                     os.environ["BONSAI_CPU_PREFIX"] = saved_prefix
 
+    def test_the_build_tool_probe_names_debian_packages(self) -> None:
+        # The probe exists so the store never offers a build that will
+        # refuse: it must name the *package* an operator installs, not the
+        # tool cmake happens to look for, and any one C++ compiler name
+        # must satisfy the compiler row.
+        from kilix_bonsai.runtime import chat
+        saved = chat.shutil.which
+
+        def with_tools(*present):
+            chat.shutil.which = lambda name: (
+                f"/usr/bin/{name}" if name in present else None)
+            return chat.cpu_build_missing_packages()
+
+        try:
+            self.assertEqual(with_tools("git", "cmake", "c++"), ())
+            self.assertEqual(with_tools("git", "cmake", "clang++"), ())
+            self.assertEqual(with_tools("git", "c++"), ("cmake",))
+            self.assertEqual(with_tools("cmake", "g++"), ("git",))
+            self.assertEqual(with_tools(), ("git", "cmake", "build-essential"))
+        finally:
+            chat.shutil.which = saved
+
     def test_cpu_delegates_to_the_flagship_tui(self) -> None:
         from kilix_bonsai.runtime import chat
         choice = chat.Choice("bonsai-27b", chat.CPU, None, "", True)

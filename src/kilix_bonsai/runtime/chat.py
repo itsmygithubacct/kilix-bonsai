@@ -147,6 +147,29 @@ def cpu_runtime_built() -> bool:
     return os.access(cli, os.X_OK)
 
 
+def cpu_build_missing_packages() -> tuple[str, ...]:
+    """Debian packages for build tools `bonsai-cpu build` needs but lacks.
+
+    Mirrors bonsai-cpu/src/bonsai_cpu/models.py BUILD_TOOLS the same way
+    cpu_runtime_built() mirrors its runtime paths: the two packages are
+    installed together but import in separate processes, so the contract is
+    repeated rather than imported. The rows must stay in step.
+
+    This exists because offering a build that will refuse is worse than not
+    offering: on a box provisioned with build-essential but no cmake (the
+    Plebian-OS default), accepting the offer used to clone llama.cpp and then
+    die on one stderr line, which the operator read as \"does not build\".
+    """
+    tools = (
+        (("git",), "git"),
+        (("cmake",), "cmake"),
+        (("c++", "g++", "clang++"), "build-essential"),
+    )
+    return tuple(
+        package for names, package in tools
+        if not any(shutil.which(name) for name in names))
+
+
 def cpu_fallback_pending_build() -> bool:
     """True when chat would land on CPU and the runtime still needs a build.
 
