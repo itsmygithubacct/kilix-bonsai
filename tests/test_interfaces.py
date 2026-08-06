@@ -398,15 +398,18 @@ class CpuFallbackTest(unittest.TestCase):
         from kilix_bonsai.runtime import chat
         self.assertIn("killpg", inspect.getsource(chat.Session.release))
 
-    def _forced(self, cpu_present: bool, free):
+    def _forced(self, cpu_present: bool, free, built: bool = True):
         from kilix_bonsai.runtime import chat
         saved_vram, saved_cpu = chat.free_vram_mib, chat.cpu_runtime
+        saved_built = chat.cpu_runtime_built
         chat.free_vram_mib = lambda backend=chat.LOCAL, timeout=30.0: free
         chat.cpu_runtime = lambda: "/usr/bin/bonsai-cpu" if cpu_present else None
+        chat.cpu_runtime_built = lambda: built
         try:
             return chat.choose("bonsai-8b"), chat.choose("bonsai-27b")
         finally:
             chat.free_vram_mib, chat.cpu_runtime = saved_vram, saved_cpu
+            chat.cpu_runtime_built = saved_built
 
     def test_no_gpu_falls_back_to_cpu(self) -> None:
         from kilix_bonsai.runtime import chat
@@ -450,6 +453,39 @@ class CpuFallbackTest(unittest.TestCase):
         eight, _ = self._forced(cpu_present=False, free=None)
         self.assertFalse(eight.usable)
         self.assertIn("bonsai-cpu", eight.reason)
+
+    def test_an_unbuilt_cpu_runtime_is_refused_with_the_build_named(self) -> None:
+        # A fresh machine has bonsai-cpu installed and its runtime unbuilt.
+        # Delegating anyway hands the terminal to a tool that dies at once on
+        # stderr; the refusal must instead carry the exact remedy.
+        eight, twenty_seven = self._forced(
+            cpu_present=True, free=None, built=False)
+        for choice in (eight, twenty_seven):
+            self.assertFalse(choice.usable)
+            self.assertIn("run: bonsai-cpu build", choice.reason)
+            self.assertIn("Kilix Bonsai", choice.reason)
+
+    def test_the_pending_build_probe_matches_the_cpu_landing(self) -> None:
+        from kilix_bonsai.runtime import chat
+        saved = (chat.free_vram_mib, chat.cpu_runtime, chat.cpu_runtime_built)
+
+        def force(free, present, built):
+            chat.free_vram_mib = lambda backend=chat.LOCAL, timeout=30.0: free
+            chat.cpu_runtime = (
+                lambda: "/usr/bin/bonsai-cpu" if present else None)
+            chat.cpu_runtime_built = lambda: built
+            return chat.cpu_fallback_pending_build()
+
+        try:
+            self.assertTrue(force(None, True, False))
+            # A card too small even for 8B still lands chat on the CPU.
+            self.assertTrue(force(100, True, False))
+            self.assertFalse(force(8000, True, False))
+            self.assertFalse(force(None, True, True))
+            self.assertFalse(force(None, False, False))
+        finally:
+            (chat.free_vram_mib, chat.cpu_runtime,
+             chat.cpu_runtime_built) = saved
 
     def test_cpu_runner_finds_the_user_install_off_path(self) -> None:
         import tempfile

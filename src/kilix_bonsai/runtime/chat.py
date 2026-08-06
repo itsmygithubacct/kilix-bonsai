@@ -130,6 +130,42 @@ def cpu_runtime() -> str | None:
         bundled, os.X_OK) else None
 
 
+def cpu_runtime_built() -> bool:
+    """True when bonsai-cpu's compiled runtime exists.
+
+    Mirrors bonsai-cpu/src/bonsai_cpu/models.py: GPU_TERMINAL_HOME and
+    BONSAI_CPU_RUNTIME_DIR are that tool's published configuration surface,
+    so this probe cannot drift from where `bonsai-cpu build` puts the
+    binaries. A fresh machine has bonsai-cpu installed and this unbuilt —
+    delegating anyway would open a TUI whose first act is dying on stderr.
+    """
+    home = os.environ.get(
+        "GPU_TERMINAL_HOME", os.path.expanduser("~/.local/gpu_terminal"))
+    runtime = os.environ.get(
+        "BONSAI_CPU_RUNTIME_DIR", os.path.join(home, "bonsai-cpu", "runtime"))
+    cli = os.path.join(runtime, "llama.cpp", "build", "bin", "llama-cli")
+    return os.access(cli, os.X_OK)
+
+
+def cpu_fallback_pending_build() -> bool:
+    """True when chat would land on CPU and the runtime still needs a build.
+
+    This is the launch-time question the store TUI asks so it can offer the
+    build behind its confirm screen — nothing that compiles or fetches may
+    run without one.
+    """
+    if cpu_runtime() is None or cpu_runtime_built():
+        return False
+    for backend in (LOCAL, REMOTE):
+        if backend == REMOTE and not REMOTE_HOST:
+            continue
+        # The same landing rule as choose(): a card that cannot even fit 8B
+        # sends chat to the CPU, so its presence must not hide the build.
+        if fits("bonsai-8b", free_vram_mib(backend)):
+            return False
+    return True
+
+
 def needs_mib(model_id: str) -> int:
     return (VRAM_27B_MIB if model_id == "bonsai-27b" else VRAM_8B_MIB) \
         + HEADROOM_MIB
@@ -197,6 +233,15 @@ def choose(preferred: str | None = None,
     # whether minutes-per-turn is acceptable is the caller's judgement to make.
     # 8B remains the default; only an explicit request gets 27B.
     if cpu_runtime() is not None:
+        if not cpu_runtime_built():
+            # Refused with the exact remedy rather than delegated: handing
+            # the terminal to a tool that immediately dies with the same
+            # words on stderr is a dead end, not an answer.
+            return Choice(
+                preferred or "bonsai-8b", CPU, None,
+                "bonsai-cpu is installed but its compiled runtime is not "
+                "built yet. Open this model in Kilix Bonsai to build it "
+                "(one confirmation), or run: bonsai-cpu build", False)
         if preferred == "bonsai-27b":
             return Choice("bonsai-27b", CPU, None,
                           "no GPU — 27B on CPU, expect minutes per response",

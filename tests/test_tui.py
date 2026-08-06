@@ -118,6 +118,64 @@ class ConfirmationTest(unittest.TestCase):
         self.assertTrue(os.access(argv[0], os.X_OK))
 
 
+class CpuRuntimeBuildTest(unittest.TestCase):
+    """Chat's CPU fallback needs one build; it is offered, never assumed."""
+
+    def _chat_state(self) -> tui.State:
+        built = state_with({"bonsai-8b"})
+        built.selected = [m.id for m in built.models].index("bonsai-8b")
+        return built
+
+    def test_launch_consults_the_build_offer(self) -> None:
+        import inspect
+        self.assertIn("offer_cpu_build", inspect.getsource(tui.State.launch))
+
+    def test_a_pending_build_is_offered_behind_the_standard_confirm(self) -> None:
+        built = self._chat_state()
+        saved = (tui.chat.cpu_fallback_pending_build, tui.chat.cpu_runtime)
+        tui.chat.cpu_fallback_pending_build = lambda: True
+        tui.chat.cpu_runtime = lambda: "/usr/bin/bonsai-cpu"
+        try:
+            offered = built.offer_cpu_build(built.model)
+        finally:
+            (tui.chat.cpu_fallback_pending_build,
+             tui.chat.cpu_runtime) = saved
+        self.assertTrue(offered)
+        self.assertEqual(built.screen, "confirm")
+        self.assertEqual(built.pending["argv"], ["/usr/bin/bonsai-cpu", "build"])
+        text = screen.render_to_text(tui.render, built)
+        # The invariant: what it costs is on screen before the confirmation.
+        self.assertIn("compiles", text)
+        self.assertIn("git clone", text)
+        self.assertIn("y confirm", text)
+
+    def test_no_offer_when_nothing_is_pending(self) -> None:
+        built = self._chat_state()
+        saved = tui.chat.cpu_fallback_pending_build
+        tui.chat.cpu_fallback_pending_build = lambda: False
+        try:
+            self.assertFalse(built.offer_cpu_build(built.model))
+        finally:
+            tui.chat.cpu_fallback_pending_build = saved
+        self.assertIsNone(built.pending)
+
+    def test_the_detail_screen_reports_the_cpu_runtime_honestly(self) -> None:
+        built = self._chat_state()
+        built.screen = "detail"
+        saved = tui.chat.cpu_runtime_built
+        try:
+            tui.chat.cpu_runtime_built = lambda: False
+            text = screen.render_to_text(tui.render, built)
+            self.assertIn("cpu runtime", text)
+            self.assertIn("not built", text)
+            self.assertIn("bonsai-cpu build", text)
+            tui.chat.cpu_runtime_built = lambda: True
+            text = screen.render_to_text(tui.render, built)
+            self.assertIn("cpu runtime  built", text)
+        finally:
+            tui.chat.cpu_runtime_built = saved
+
+
 class NavigationTest(unittest.TestCase):
     def test_enter_on_the_list_opens_the_detail_screen(self) -> None:
         built = state_with({"bonsai-8b"})

@@ -19,6 +19,7 @@ import sys
 
 from . import launcher, provision, screen, store, text
 from .catalog import Model, Variant, load
+from .runtime import chat
 
 SECTIONS = ("Chat", "Speech", "Images", "Models")
 
@@ -124,11 +125,39 @@ class State:
         if not ok:
             self.message = f"{model.title}: {detail}"
             return
+        if self.offer_cpu_build(model):
+            return
         argv = launcher.tool_argv(model)
         provision.run_detached_from_curses(
             self, argv, f"{detail} — {model.title}")
         self.refresh()
         self.message = f"closed {model.title}"
+
+    def offer_cpu_build(self, model: Model) -> bool:
+        """Offer the one build CPU chat needs, behind the standard confirm.
+
+        On a machine with no usable GPU, chat lands on bonsai-cpu — which a
+        fresh install ships without its compiled runtime. Launching anyway
+        ends in the chat backend refusing, so the store, which owns the
+        confirm idiom, offers the build here: priced, described, and never
+        run without a yes.
+        """
+        if model.runtime.get("kind") != "chat":
+            return False
+        if not chat.cpu_fallback_pending_build():
+            return False
+        runner = chat.cpu_runtime()
+        if runner is None:
+            return False
+        self.ask(
+            "Build the bonsai-cpu runtime",
+            "no usable GPU here, so chat runs on the CPU via bonsai-cpu,\n"
+            "whose pinned llama.cpp runtime is not built yet. Confirming\n"
+            "fetches the pinned llama.cpp checkout (a git clone) and\n"
+            "compiles it — minutes of CPU time and some disk.\n"
+            f"runs: {runner} build",
+            [runner, "build"])
+        return True
 
     def install_deps(self, model: Model) -> None:
         packages = ", ".join(model.deps.get("apt") or ()) or "none"
@@ -237,6 +266,13 @@ def render_detail(surface, state: State) -> None:
         lines.append(f"shared with  {model.shared_with}")
     deps = store.deps_state(model)
     lines.append("dependencies " + ("installed" if deps else "not installed"))
+    if model.runtime.get("kind") == "chat":
+        # The CPU fallback's compiled runtime is a real dependency of chat on
+        # a GPU-less machine; saying only "dependencies installed" while it
+        # is unbuilt sent people into a launch that could not work.
+        lines.append("cpu runtime  " + (
+            "built" if chat.cpu_runtime_built()
+            else "not built — offered on launch, or run: bonsai-cpu build"))
     row = top
     for line in lines:
         if row >= bottom - 2:
