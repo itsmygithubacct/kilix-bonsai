@@ -26,7 +26,9 @@ log() { printf 'bonsai-cpu: %s\n' "$*" >&2; }
 [ -f "$PIN" ] || die "missing $PIN"
 url="$(sed -n 's/^url=//p' "$PIN")"
 commit="$(sed -n 's/^commit=//p' "$PIN")"
-[ -n "$url" ] && [ -n "$commit" ] || die "runtime.pin lacks url= or commit="
+if [ -z "$url" ] || [ -z "$commit" ]; then
+    die "runtime.pin lacks url= or commit="
+fi
 
 command -v git >/dev/null 2>&1 || die "git is required"
 

@@ -67,6 +67,43 @@ class InstallTest(unittest.TestCase):
             self.assertEqual(help_result.returncode, 0, help_result.stderr)
             self.assertIn("usage:", help_result.stdout)
 
+    def test_launchers_quote_an_arbitrary_checkout_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            linked_root = Path(temporary) / "checkout'with\"quotes"
+            linked_root.symlink_to(ROOT, target_is_directory=True)
+            prefix = Path(temporary) / "prefix"
+            environment = dict(
+                os.environ,
+                KILIX_BONSAI_PREFIX=str(prefix),
+                BONSAI_CPU_PREFIX=str(prefix),
+            )
+
+            for installer in (
+                linked_root / "install.sh",
+                linked_root / "bonsai-cpu" / "install.sh",
+            ):
+                result = subprocess.run(
+                    [str(installer)], capture_output=True, text=True,
+                    env=environment, timeout=30,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+
+            for command in ("kilix-bonsai", "bonsai-cpu"):
+                launcher = prefix / "bin" / command
+                syntax = subprocess.run(
+                    ["sh", "-n", str(launcher)], capture_output=True,
+                    text=True, timeout=30,
+                )
+                self.assertEqual(syntax.returncode, 0, syntax.stderr)
+                help_result = subprocess.run(
+                    [str(launcher), "--help"], capture_output=True,
+                    text=True, env=environment, timeout=30,
+                )
+                self.assertEqual(
+                    help_result.returncode, 0, help_result.stderr
+                )
+                self.assertIn("usage:", help_result.stdout)
+
     def test_runtime_falls_back_to_the_bundled_component(self) -> None:
         saved_which = chat.shutil.which
         saved_prefix = os.environ.get("BONSAI_CPU_PREFIX")

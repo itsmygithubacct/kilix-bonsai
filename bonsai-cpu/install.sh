@@ -14,10 +14,17 @@ PREFIX="${BONSAI_CPU_PREFIX:-$HOME/.local}"
 BIN_DIR="$PREFIX/bin"
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 
+shell_quote() {
+    printf "'"
+    printf '%s' "$1" | sed "s/'/'\\\\''/g"
+    printf "'"
+}
+
 mkdir -p -- "$BIN_DIR"
+quoted_target="$(shell_quote "$REPO_DIR/bin/bonsai-cpu")"
 cat > "$BIN_DIR/bonsai-cpu" <<EOF
 #!/bin/sh
-exec "$REPO_DIR/bin/bonsai-cpu" "\$@"
+exec $quoted_target "\$@"
 EOF
 chmod 755 "$BIN_DIR/bonsai-cpu"
 printf 'bonsai-cpu: installed %s\n' "$BIN_DIR/bonsai-cpu" >&2

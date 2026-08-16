@@ -9,8 +9,10 @@ and every runtime is asked whether it could run rather than being assumed to.
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import sys
+import tempfile
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -206,6 +208,27 @@ class ImageRequestTest(unittest.TestCase):
                        if line.startswith("REMOTE_SUBCOMMAND")]
         self.assertEqual(len(assignments), 1, assignments)
         self.assertIn("environ", assignments[0])
+
+    def test_gallery_tolerates_malformed_sidecar_values(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            for index, saved in enumerate((
+                [],
+                {"size": "not-a-size", "seconds": {"bad": "value"}},
+            )):
+                stem = os.path.join(temporary, f"generation-{index:04d}")
+                with open(stem + ".png", "wb") as handle:
+                    handle.write(b"not decoded while listing")
+                with open(stem + ".json", "w", encoding="utf-8") as handle:
+                    json.dump(saved, handle)
+
+            gallery = image.Gallery(temporary)
+            gallery.load()
+
+            self.assertEqual(len(gallery.entries), 2)
+            for entry in gallery.entries:
+                self.assertEqual((entry.request.width, entry.request.height),
+                                 (512, 512))
+                self.assertEqual(entry.seconds, 0.0)
 
 
 class RuntimeProbeTest(unittest.TestCase):

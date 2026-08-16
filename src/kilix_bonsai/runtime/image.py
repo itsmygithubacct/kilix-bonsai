@@ -204,16 +204,29 @@ class Gallery:
                     saved = json.load(handle)
             except (OSError, json.JSONDecodeError):
                 saved = {}
-            width, _, height = str(saved.get("size", "512x512")).partition("x")
+            if not isinstance(saved, dict):
+                saved = {}
+            width_text, separator, height_text = str(
+                saved.get("size", "512x512")
+            ).partition("x")
+            try:
+                width = int(width_text) if separator else 512
+                height = int(height_text) if separator else 512
+            except (TypeError, ValueError):
+                width = height = 512
+            try:
+                seconds = float(saved.get("seconds") or 0.0)
+            except (TypeError, ValueError):
+                seconds = 0.0
             self.entries.append(Result(
                 request=Request(
                     prompt=saved.get("prompt", "(prompt not recorded)"),
-                    width=int(width or 512), height=int(height or 512),
+                    width=width, height=height,
                     seed=saved.get("seed"), steps=saved.get("steps"),
                     input_image=saved.get("input_image"),
                     backend=saved.get("backend", REMOTE)),
                 path=path, ok=True, detail="from a previous session",
-                seconds=float(saved.get("seconds") or 0.0)))
+                seconds=seconds))
 
 
 def generate(request: Request, output: str, *,

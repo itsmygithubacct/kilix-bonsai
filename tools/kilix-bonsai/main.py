@@ -28,6 +28,14 @@ def _model(model_id: str):
         raise SystemExit(2) from error
 
 
+def _variant(model: catalog.Model, variant_id: str | None):
+    try:
+        return model.variant(variant_id)
+    except catalog.CatalogError as error:
+        print(f"kilix-bonsai: {error}", file=sys.stderr)
+        raise SystemExit(2) from error
+
+
 def cmd_list(args: argparse.Namespace) -> int:
     models = catalog.load()
     width = max((len(model.id) for model in models), default=10)
@@ -63,7 +71,7 @@ def cmd_status(args: argparse.Namespace) -> int:
 
 def cmd_path(args: argparse.Namespace) -> int:
     model = _model(args.model)
-    print(model.variant(args.variant).directory(model.store))
+    print(_variant(model, args.variant).directory(model.store))
     return 0
 
 
@@ -76,7 +84,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
     part a shell is genuinely better at.
     """
     model = _model(args.model)
-    variant = model.variant(args.variant)
+    variant = _variant(model, args.variant)
     directory = variant.directory(model.store)
     out = sys.stdout
     print(f"MODEL\t{model.id}", file=out)
@@ -98,7 +106,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
 
 def cmd_pull(args: argparse.Namespace) -> int:
     model = _model(args.model)
-    variant = model.variant(args.variant)
+    variant = _variant(model, args.variant)
     return provision.run(provision.pull_argv(
         model, variant, force=args.force, dry_run=args.dry_run,
         source=args.source))
@@ -111,7 +119,7 @@ def cmd_deps(args: argparse.Namespace) -> int:
 
 def cmd_verify(args: argparse.Namespace) -> int:
     model = _model(args.model)
-    variant = model.variant(args.variant)
+    variant = _variant(model, args.variant)
     ok = store.verify(model, variant, report=lambda path, good, detail: print(
         f"{'ok  ' if good else 'FAIL'} {path} — {detail}"))
     if getattr(args, "wait", False):

@@ -128,6 +128,21 @@ class DryRunTest(unittest.TestCase):
                       "--dry-run"])
         self.assertNotEqual(result.returncode, 0)
 
+    def test_cli_unknown_variants_are_concise_usage_errors(self) -> None:
+        cli = os.path.join(ROOT, "tools", "kilix-bonsai", "main.py")
+        commands = (
+            ["path", "bonsai-8b", "--variant", "nope"],
+            ["plan", "bonsai-8b", "--variant", "nope"],
+            ["pull", "bonsai-8b", "--variant", "nope", "--dry-run"],
+            ["verify", "bonsai-8b", "--variant", "nope"],
+        )
+        for command in commands:
+            with self.subTest(command=command[0]):
+                result = run([sys.executable, cli, *command])
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertIn("has no variant", result.stderr)
+                self.assertNotIn("Traceback", result.stderr)
+
 
 class ResumeTest(unittest.TestCase):
     """A partial file that cannot be resumed from must be discarded.
