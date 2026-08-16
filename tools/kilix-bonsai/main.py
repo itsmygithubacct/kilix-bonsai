@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
     "src"))
 
-from kilix_bonsai import (catalog, desktop, paths, provision,  # noqa: E402
+from kilix_bonsai import (__version__, catalog, desktop, paths, provision,  # noqa: E402
                           store, tui)
 
 
@@ -174,6 +174,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="kilix-bonsai",
         description="BitNet models for Kilix: inspect, download, verify.")
+    parser.add_argument("--version", action="version",
+                        version=f"%(prog)s {__version__}")
     parser.add_argument("--screenshot", metavar="PATH",
                         help="render one frame of the TUI to PATH and exit")
     # Rendering mode, mirroring the shared desktop's own flags. Without these

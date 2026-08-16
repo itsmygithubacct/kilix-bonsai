@@ -223,14 +223,17 @@ the system runs without a confirmation, and every screen clips cleanly down to
 ```sh
 ./install.sh                       # all five commands into ~/.local/bin
 KILIX_BONSAI_PREFIX=/usr/local ./install.sh
+./install.sh --uninstall           # remove this checkout's unchanged launchers
 ```
 
 The commands are launchers that run the tools from this checkout, including
 `bonsai-cpu/bin/bonsai-cpu`, so updating is a `git pull` rather than a
-reinstall.
+reinstall. Uninstall removes only launchers whose contents still exactly match
+what this checkout generated; a locally edited or replaced command is retained
+and reported instead of being deleted.
 
 ## Versioning
 
-`0.1.0`. This is not yet one of the components the coordinated stack release
-pins; when it becomes one, its version moves in lockstep with the rest and its
-tag is created only by the release procedure.
+`0.2.0`. Kilix Bonsai is in the coordinated Plebian-OS 0.2.0 version set and is
+selected by an exact commit in Kilix. Tags and release artifacts are still
+created only by the release procedure.

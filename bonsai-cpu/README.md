@@ -7,6 +7,7 @@ CPU-only, driven by one small command that knows what these checkpoints are.
 ```sh
 ../install.sh                # install the complete kilix-bonsai command set
 ./install.sh                 # install only bonsai-cpu
+./install.sh --uninstall     # remove this checkout's unchanged launcher
 bonsai-cpu build             # fetch the pinned runtime and compile it
 bonsai-cpu run "Name three trees."
 ```
@@ -165,5 +166,5 @@ absolute home path anywhere under version control.
 
 ## Versioning
 
-`0.1.0`. This component is versioned with its owning `kilix-bonsai`
+`0.2.0`. This component is versioned with its owning `kilix-bonsai`
 repository.

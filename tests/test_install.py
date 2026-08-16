@@ -67,6 +67,104 @@ class InstallTest(unittest.TestCase):
             self.assertEqual(help_result.returncode, 0, help_result.stderr)
             self.assertIn("usage:", help_result.stdout)
 
+    def test_uninstall_removes_only_generated_launchers(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            prefix = Path(temporary) / "prefix"
+            environment = dict(
+                os.environ,
+                KILIX_BONSAI_PREFIX=str(prefix),
+            )
+            install = subprocess.run(
+                [str(ROOT / "install.sh")], capture_output=True, text=True,
+                env=environment, timeout=30,
+            )
+            self.assertEqual(install.returncode, 0, install.stderr)
+            unrelated = prefix / "bin" / "unrelated-command"
+            unrelated.write_text("user owned\n", encoding="utf-8")
+
+            uninstall = subprocess.run(
+                [str(ROOT / "install.sh"), "--uninstall"],
+                capture_output=True, text=True, env=environment, timeout=30,
+            )
+            self.assertEqual(uninstall.returncode, 0, uninstall.stderr)
+            self.assertIn("removed 5 launchers", uninstall.stdout)
+            for command in COMMANDS:
+                self.assertFalse((prefix / "bin" / command).exists(), command)
+            self.assertEqual(
+                unrelated.read_text(encoding="utf-8"), "user owned\n"
+            )
+
+            repeated = subprocess.run(
+                [str(ROOT / "install.sh"), "--uninstall"],
+                capture_output=True, text=True, env=environment, timeout=30,
+            )
+            self.assertEqual(repeated.returncode, 0, repeated.stderr)
+            self.assertIn("removed 0 launchers", repeated.stdout)
+
+    def test_uninstall_retains_a_modified_launcher(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            prefix = Path(temporary) / "prefix"
+            environment = dict(
+                os.environ,
+                KILIX_BONSAI_PREFIX=str(prefix),
+            )
+            install = subprocess.run(
+                [str(ROOT / "install.sh")], capture_output=True, text=True,
+                env=environment, timeout=30,
+            )
+            self.assertEqual(install.returncode, 0, install.stderr)
+            modified = prefix / "bin" / "kilix-bonsai"
+            modified.write_text("#!/bin/sh\nexit 7\n", encoding="utf-8")
+
+            uninstall = subprocess.run(
+                [str(ROOT / "install.sh"), "--uninstall"],
+                capture_output=True, text=True, env=environment, timeout=30,
+            )
+            self.assertNotEqual(uninstall.returncode, 0)
+            self.assertTrue(modified.exists())
+            self.assertIn("modified launcher", uninstall.stderr)
+            for command in COMMANDS[1:]:
+                self.assertFalse((prefix / "bin" / command).exists(), command)
+
+    def test_standalone_cpu_uninstall_is_scoped_and_idempotent(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            prefix = Path(temporary) / "prefix"
+            environment = dict(os.environ, BONSAI_CPU_PREFIX=str(prefix))
+            installer = ROOT / "bonsai-cpu" / "install.sh"
+            install = subprocess.run(
+                [str(installer)], capture_output=True, text=True,
+                env=environment, timeout=30,
+            )
+            self.assertEqual(install.returncode, 0, install.stderr)
+            launcher = prefix / "bin" / "bonsai-cpu"
+            self.assertTrue(launcher.exists())
+
+            for _ in range(2):
+                uninstall = subprocess.run(
+                    [str(installer), "--uninstall"], capture_output=True,
+                    text=True, env=environment, timeout=30,
+                )
+                self.assertEqual(uninstall.returncode, 0, uninstall.stderr)
+                self.assertFalse(launcher.exists())
+
+    def test_coordinated_version_is_reported_consistently(self) -> None:
+        self.assertEqual((ROOT / "VERSION").read_text().strip(), "0.2.0")
+        self.assertEqual(
+            (ROOT / "bonsai-cpu" / "VERSION").read_text().strip(), "0.2.0"
+        )
+        for command, expected in (
+            (ROOT / "tools" / "kilix-bonsai" / "main.py",
+             "kilix-bonsai 0.2.0"),
+            (ROOT / "bonsai-cpu" / "bin" / "bonsai-cpu",
+             "bonsai-cpu 0.2.0"),
+        ):
+            result = subprocess.run(
+                [sys.executable, str(command), "--version"],
+                capture_output=True, text=True, timeout=30,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.strip(), expected)
+
     def test_launchers_quote_an_arbitrary_checkout_path(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             linked_root = Path(temporary) / "checkout'with\"quotes"

@@ -19,7 +19,7 @@ REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(
     os.path.realpath(__file__))))
 sys.path.insert(0, os.path.join(REPO_DIR, "src"))
 
-from bonsai_cpu import models
+from bonsai_cpu import __version__, models
 from bonsai_cpu.models import MODELS, SAMPLING
 
 
@@ -203,6 +203,8 @@ def main():
     parser = argparse.ArgumentParser(
         prog="bonsai-cpu",
         description="Run the 1-bit Bonsai models on CPU.")
+    parser.add_argument("--version", action="version",
+                        version=f"%(prog)s {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
 
     def add(name, fn, help_text, model=True):

@@ -20,14 +20,50 @@ shell_quote() {
     printf "'"
 }
 
-mkdir -p -- "$BIN_DIR"
-quoted_target="$(shell_quote "$REPO_DIR/bin/bonsai-cpu")"
-cat > "$BIN_DIR/bonsai-cpu" <<EOF
-#!/bin/sh
-exec $quoted_target "\$@"
+launcher_text() {
+    quoted_target="$(shell_quote "$REPO_DIR/bin/bonsai-cpu")"
+    printf '%s\n' '#!/bin/sh'
+    printf 'exec %s "$@"\n' "$quoted_target"
+}
+
+usage() {
+    cat <<'EOF'
+usage: install.sh [--uninstall]
+
+  --uninstall  remove the launcher generated for this checkout; retain it if
+               its contents were changed after installation
 EOF
-chmod 755 "$BIN_DIR/bonsai-cpu"
-printf 'bonsai-cpu: installed %s\n' "$BIN_DIR/bonsai-cpu" >&2
+}
+
+uninstall=0
+case "${1:-}" in
+  '') ;;
+  --uninstall) uninstall=1; shift ;;
+  -h|--help) usage; exit 0 ;;
+  *) usage >&2; exit 2 ;;
+esac
+[ "$#" -eq 0 ] || { usage >&2; exit 2; }
+
+launcher="$BIN_DIR/bonsai-cpu"
+if [ "$uninstall" = 1 ]; then
+    if [ ! -e "$launcher" ]; then
+        printf 'bonsai-cpu: no launcher installed at %s\n' "$launcher" >&2
+        exit 0
+    fi
+    expected="$(launcher_text)"
+    if [ ! -f "$launcher" ] || [ "$(cat -- "$launcher")" != "$expected" ]; then
+        printf 'bonsai-cpu: modified launcher retained: %s\n' "$launcher" >&2
+        exit 1
+    fi
+    rm -f -- "$launcher"
+    printf 'bonsai-cpu: removed %s\n' "$launcher" >&2
+    exit 0
+fi
+
+mkdir -p -- "$BIN_DIR"
+launcher_text > "$launcher"
+chmod 755 "$launcher"
+printf 'bonsai-cpu: installed %s\n' "$launcher" >&2
 
 case ":$PATH:" in
   *":$BIN_DIR:"*) ;;
