@@ -196,8 +196,8 @@ class ModeSelectionTest(unittest.TestCase):
             with open(path, encoding="utf-8") as handle:
                 frame = handle.read()
         self.assertIn("KILIX TUI", frame)
-        self.assertIn("Bonsai · Desktop", frame)
-        self.assertIn("▶1 Chat", frame.splitlines()[1])
+        self.assertIn("Bonsai · Models", frame)
+        self.assertIn("▶4 Models", frame.splitlines()[1])
         self.assertNotIn("//", frame)
 
     def test_forced_graphics_without_the_shared_package_is_a_clean_error(self):
