@@ -51,12 +51,12 @@
             {
               "path": "config.json",
               "size": 3527,
-              "sha256": null
+              "sha256": "4873cb753c97f042886a93adfef478978662c21169755670de20f2ff73fa4ca1"
             },
             {
               "path": "generation_config.json",
               "size": 138,
-              "sha256": null
+              "sha256": "8c970692323e3ea0e9b8b0a4dca79388d31226e41f83c9fd6014804280ebf6e8"
             },
             {
               "path": "tokenizer.json",
@@ -116,12 +116,12 @@
             {
               "path": "config.json",
               "size": 3527,
-              "sha256": null
+              "sha256": "4873cb753c97f042886a93adfef478978662c21169755670de20f2ff73fa4ca1"
             },
             {
               "path": "generation_config.json",
               "size": 138,
-              "sha256": null
+              "sha256": "8c970692323e3ea0e9b8b0a4dca79388d31226e41f83c9fd6014804280ebf6e8"
             },
             {
               "path": "tokenizer.json",

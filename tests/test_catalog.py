@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, os.path.join(
@@ -64,6 +65,53 @@ class CatalogTest(unittest.TestCase):
                         self.assertTrue(
                             item.sha256, f"{model.id} {item.path} has no digest")
                         self.assertRegex(item.sha256, r"^[0-9a-f]{64}$")
+
+    def test_no_installable_variant_has_a_null_digest(self) -> None:
+        # B1 / R4-058: the two previously-null VibeVoice metadata files, fetched
+        # read-only from microsoft/VibeVoice-ASR-BitNet@66e78021 on
+        # 2026-09-17T17:39:01Z. The default variant is what Enter downloads.
+        model = catalog.find("vibevoice-asr-bitnet")
+        pinned = {
+            "config.json":
+                "4873cb753c97f042886a93adfef478978662c21169755670de20f2ff73fa4ca1",
+            "generation_config.json":
+                "8c970692323e3ea0e9b8b0a4dca79388d31226e41f83c9fd6014804280ebf6e8",
+        }
+        sizes = {"config.json": 3527, "generation_config.json": 138}
+        self.assertTrue(model.default_variant.default)
+        for variant in model.variants:
+            found = {}
+            for item in variant.files:
+                if item.path not in pinned:
+                    continue
+                self.assertTrue(
+                    item.sha256,
+                    f"{model.id}/{variant.id} {item.path} has a null digest")
+                self.assertRegex(item.sha256, r"^[0-9a-f]{64}$")
+                self.assertEqual(item.size, sizes[item.path], item.path)
+                found[item.path] = item.sha256
+            self.assertEqual(found, pinned, variant.id)
+        with tempfile.TemporaryDirectory() as folder:
+            with open(os.path.join(model.folder, "MODEL.json"),
+                      encoding="utf-8") as handle:
+                raw = json.load(handle)
+            for variant in raw["variants"]:
+                for source in variant.get("sources", ()):
+                    for entry in source.get("files", ()):
+                        if entry.get("path") == "config.json":
+                            entry["sha256"] = None
+            planted_path = os.path.join(folder, "MODEL.json")
+            with open(planted_path, "w", encoding="utf-8") as handle:
+                json.dump(raw, handle)
+            planted_model = catalog.load_model(folder)
+            planted_found = {
+                item.path: item.sha256
+                for item in planted_model.default_variant.files
+                if item.path in pinned
+            }
+            self.assertIsNone(planted_found["config.json"])
+            with self.assertRaises(AssertionError):
+                self.assertEqual(planted_found, pinned)
 
     def test_revisions_are_full_commit_shas(self) -> None:
         # A branch name here would silently install whatever HEAD happened to
