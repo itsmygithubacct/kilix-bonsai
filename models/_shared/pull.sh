@@ -85,6 +85,26 @@ variant_id="$(field VARIANT)"
 directory="$(field DIR)"
 total="$(field BYTES)"
 
+# A model whose MODEL.json names a licence_gate is fetched only after its licence
+# was shown and accepted (OD-S / OD-BB). Every route that downloads it -- the
+# CLI, the TUI's Download, `kilix bonsai pull`, `kilix stt --install` -- runs
+# this file, so the gate lives here. kilix-stt answers from the user's licence
+# receipts and fetches nothing: exit 0 when a receipt covers the model, 3 when
+# none does. --dry-run fetches nothing and needs no receipt.
+licence_gate="$(field LICENCE_GATE)"
+if [ -n "$licence_gate" ] && [ "$DRY_RUN" = 0 ]; then
+  gate_tool="$(command -v kilix-stt 2>/dev/null || true)"
+  [ -n "$gate_tool" ] || gate_tool="$HOME/.local/bin/kilix-stt"
+  if [ ! -x "$gate_tool" ]; then
+    log "$title is downloaded only after its licence is accepted, and kilix-stt,"
+    log "which checks that, is not installed. Run: kilix models install $licence_gate"
+    exit 3
+  fi
+  gate_status=0
+  "$gate_tool" --check-licence "$licence_gate" || gate_status=$?
+  [ "$gate_status" = 0 ] || exit "$gate_status"
+fi
+
 # Files that are already present at the right size and digest are not fetched
 # again, so this reports what the run will actually do rather than the size of
 # the whole variant.

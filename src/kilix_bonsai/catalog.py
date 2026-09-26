@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass, field
 
 from . import paths
@@ -73,6 +74,9 @@ class Model:
     store_env: str = ""
     store_default: str = ""
     shared_with: str | None = None
+    # The speech catalog id whose licence receipt a pull requires first, or ""
+    # (OD-S / OD-BB: weights are fetched only after the licence was accepted).
+    licence_gate: str = ""
     folder: str = ""
 
     @property
@@ -100,6 +104,14 @@ class Model:
 
     def script(self, name: str) -> str:
         return os.path.join(self.folder, name)
+
+
+def _licence_gate(value, document) -> str:
+    if value == "":
+        return ""
+    if not isinstance(value, str) or not re.fullmatch(r"[a-z0-9][a-z0-9.-]{0,63}", value):
+        raise CatalogError(f"{document} has an invalid licence_gate")
+    return value
 
 
 def _variant(raw: dict) -> Variant:
@@ -146,7 +158,8 @@ def load_model(folder: str) -> Model:
         deps=raw.get("deps") or {}, runtime=raw.get("runtime") or {},
         variants=variants,
         store_env=store.get("env", ""), store_default=store["default"],
-        shared_with=store.get("shared_with"), folder=folder)
+        shared_with=store.get("shared_with"), folder=folder,
+        licence_gate=_licence_gate(raw.get("licence_gate", ""), document))
 
 
 def load(root: str | None = None) -> list[Model]:

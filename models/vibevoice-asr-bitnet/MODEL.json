@@ -7,6 +7,7 @@
   "quantization": "I2_S + Q6_K decoder, I8_S tokenizer",
   "license": "MIT",
   "upstream": "https://huggingface.co/microsoft/VibeVoice-ASR-BitNet",
+  "licence_gate": "vibevoice-asr-bitnet",
   "store": {
     "env": "KILIX_BONSAI_VIBEVOICE_DIR",
     "default": "$KILIX_DATA_HOME/voice/models/vibevoice-asr-bitnet",

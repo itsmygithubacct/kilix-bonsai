@@ -90,6 +90,8 @@ def cmd_plan(args: argparse.Namespace) -> int:
     print(f"MODEL\t{model.id}", file=out)
     print(f"TITLE\t{model.title}", file=out)
     print(f"VARIANT\t{variant.id}", file=out)
+    if model.licence_gate:
+        print(f"LICENCE_GATE\t{model.licence_gate}", file=out)
     print(f"DIR\t{directory}", file=out)
     print(f"STORE\t{model.store}", file=out)
     print(f"VENV\t{paths.venv_dir(model.id)}", file=out)

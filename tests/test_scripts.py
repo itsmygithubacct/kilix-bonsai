@@ -228,3 +228,68 @@ class PlanTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LicenceGateTest(unittest.TestCase):
+    """A model whose MODEL.json names a licence_gate downloads nothing without a receipt."""
+
+    def pull(self, model_id, *args, check_exit=None):
+        with tempfile.TemporaryDirectory() as home:
+            bin_dir = os.path.join(home, "bin")
+            os.mkdir(bin_dir)
+            calls = os.path.join(home, "calls")
+            for tool in ("curl", "wget"):
+                path = os.path.join(bin_dir, tool)
+                with open(path, "w", encoding="utf-8") as handle:
+                    handle.write(f"#!/bin/sh\necho {tool} >>{calls!r}\nexit 1\n")
+                os.chmod(path, 0o755)
+            if check_exit is not None:
+                path = os.path.join(bin_dir, "kilix-stt")
+                with open(path, "w", encoding="utf-8") as handle:
+                    handle.write("#!/bin/sh\n"
+                                 f"echo \"$*\" >>{calls!r}\n"
+                                 f"[ {check_exit} = 0 ] || echo 'Run: kilix models install '\"$2\" >&2\n"
+                                 f"exit {check_exit}\n")
+                os.chmod(path, 0o755)
+            env = dict(os.environ, HOME=home, PATH=f"{bin_dir}:/usr/bin:/bin",
+                       KILIX_BONSAI_MODELS_DIR=os.path.join(home, "models"),
+                       KILIX_DATA_HOME=os.path.join(home, "data"),
+                       KILIX_BONSAI_VIBEVOICE_DIR=os.path.join(home, "vibevoice"))
+            script = os.path.join(ROOT, "models", model_id, "pull.sh")
+            result = subprocess.run([script, *args], capture_output=True, text=True,
+                                    env=env, timeout=120)
+            called = open(calls).read().split("\n") if os.path.exists(calls) else []
+            return result, [line for line in called if line]
+
+    def test_the_speech_model_declares_its_gate(self) -> None:
+        gated = {model.id: model.licence_gate for model in catalog.load() if model.licence_gate}
+        self.assertEqual(gated, {"vibevoice-asr-bitnet": "vibevoice-asr-bitnet"})
+
+    def test_no_receipt_means_no_download(self) -> None:
+        for args in ((), ("--from", "/nonexistent"), ("--force",)):
+            with self.subTest(args=args):
+                result, calls = self.pull("vibevoice-asr-bitnet", *args, check_exit=3)
+                self.assertEqual(result.returncode, 3, result.stderr)
+                self.assertIn("Run: kilix models install vibevoice-asr-bitnet", result.stderr)
+                self.assertEqual(calls, ["--check-licence vibevoice-asr-bitnet"])
+
+    def test_no_checker_means_no_download(self) -> None:
+        result, calls = self.pull("vibevoice-asr-bitnet")
+        self.assertEqual(result.returncode, 3, result.stderr)
+        self.assertIn("Run: kilix models install vibevoice-asr-bitnet", result.stderr)
+        self.assertEqual(calls, [])
+
+    def test_a_receipt_lets_the_download_start(self) -> None:
+        result, calls = self.pull("vibevoice-asr-bitnet", check_exit=0)
+        self.assertEqual(calls[0], "--check-licence vibevoice-asr-bitnet")
+        self.assertIn("curl", calls[1:])
+
+    def test_dry_run_needs_no_receipt(self) -> None:
+        result, calls = self.pull("vibevoice-asr-bitnet", "--dry-run", check_exit=3)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(calls, [])
+
+    def test_an_ungated_model_is_not_asked_about(self) -> None:
+        result, calls = self.pull("bonsai-8b", check_exit=3)
+        self.assertNotIn("--check-licence", " ".join(calls))
+        self.assertIn("curl", calls)
