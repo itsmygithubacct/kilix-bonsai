@@ -29,6 +29,11 @@ which is why the path is derived from the same environment variables
 
 ## Get it
 
+Its licence has to be accepted first: `kilix models install vibevoice-asr-bitnet`
+shows it and records the receipt. Until then every route below — `pull.sh`, the
+TUI's Download and `--from` — stops with exit 3 before touching the weights
+(MODEL.json `licence_gate`; `--dry-run` needs no receipt).
+
 ```sh
 ./install-deps.sh
 ./pull.sh                                  # 1.71 GB, the ready-to-use GGUFs
