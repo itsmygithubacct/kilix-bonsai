@@ -66,7 +66,7 @@ def generate(args: argparse.Namespace) -> None:
         torch.cuda.empty_cache()
     seed = args.seed if args.seed is not None else secrets.randbelow(2**31)
     print(f'Generating locally: {width}x{height}, seed {seed}…', flush=True)
-    data = pipe.generate_png(args.prompt, seed=seed, steps=args.steps, width=width, height=height)
+    data = pipe.generate_png(prompt=args.prompt, seed=seed, steps=args.steps, width=width, height=height)
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_bytes(data)

@@ -2,6 +2,7 @@
 import argparse
 from pathlib import Path
 import sys
+import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
@@ -21,6 +22,31 @@ class LocalImageTest(unittest.TestCase):
         with patch.object(local_image, 'check'), patch.dict(sys.modules, {'torch': torch}):
             with self.assertRaisesRegex(RuntimeError, 'GPU busy: 400 MiB free.*Retry'):
                 local_image.generate(self.request())
+
+    def test_generation_uses_keyword_only_pipeline_contract(self):
+        torch = Mock()
+        torch.cuda.mem_get_info.return_value = (7000 * 1024**2, 8192 * 1024**2)
+
+        class Pipeline:
+            def __init__(self, **kwargs):
+                pass
+
+            def prewarm(self):
+                pass
+
+            def generate_png(self, *, prompt, seed, steps, width, height):
+                self_test.assertEqual((prompt, seed, steps, width, height),
+                                      ('a fire kitten', 1, 4, 512, 512))
+                return b'generated image'
+
+        self_test = self
+        backend = Mock(GpuPipeline=Pipeline)
+        with tempfile.TemporaryDirectory() as directory, patch.object(
+                local_image, 'check'), patch.object(local_image, 'weights', return_value=Path(directory)), patch.dict(
+                sys.modules, {'torch': torch, 'backend_gpu.pipeline_gpu': backend}):
+            output = Path(directory) / 'result.png'
+            local_image.generate(self.request(output=str(output)))
+            self.assertEqual(output.read_bytes(), b'generated image')
 
     def test_reference_is_refused_explicitly(self):
         with self.assertRaisesRegex(ValueError, 'reference images are not supported'):
