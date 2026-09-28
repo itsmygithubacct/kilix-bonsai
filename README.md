@@ -118,10 +118,10 @@ Nothing here reimplements inference. On a GPU, chat drives the pinned vendor
 launchers, one process per turn. On CPU it delegates to the bundled
 `bonsai-cpu/` component, whose pinned upstream `llama-server` remains resident
 behind the full chat TUI.
-Speech drives VibeASR's `asr_infer`, and images drive the image scaffold's own
-CLI, local or remote. Each backend is *probed* rather than assumed — an
-interface that cannot run says so on its first screen instead of failing
-minutes into a model load.
+Speech drives VibeASR's `asr_infer`. Images default to the bundled local CUDA
+CLI; install its isolated dependencies with
+`models/bonsai-image-4b/install-deps.sh`. Remote execution requires explicit
+selection and an external CLI. Missing local dependencies are reported in the pane.
 
 Three findings worth recording, all discovered by running the things rather than
 reading about them:

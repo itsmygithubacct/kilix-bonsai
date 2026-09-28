@@ -34,14 +34,19 @@ Override with `KILIX_BONSAI_BONSAI_IMAGE_4B_DIR` if the weights live elsewhere.
 
 ## Running it
 
-The CUDA stack these weights need — gemlite kernels, HQQ, a matching Triton and
-torch — is large and version-sensitive, so `install-deps.sh` deliberately does
-**not** pin it a second time. Resolve it from the image scaffold's own lock,
-which is the copy that is actually tested against these weights.
+Run `./install-deps.sh` to install the pinned local CUDA pipeline in an
+isolated Python 3.11 environment. This requires `uv` and `git`; it does not
+download model weights. `./install-deps.sh --check` reports missing dependencies,
+weights, or CUDA support. Existing ternary weights are reused in place.
 
-It needs an NVIDIA GPU of compute capability 7.0 or newer. Older cards can hold
-and verify the weights but cannot execute the kernels — the failure is at the
-first kernel launch, well after a long model load, so check the card first.
+Local is the default and an unavailable local backend never selects remote.
+Remote requires an explicit backend selection and a configured external CLI
+(`KILIX_BONSAI_IMAGE_CLI` and `KILIX_BONSAI_IMAGE_REMOTE`).
+
+The bundled runtime uses the ternary model and supports text-to-image.
+Reference images require an external runtime with that capability. Start with
+the 512x512 fast preset; larger images require more GPU memory. When other GPU
+jobs leave too little memory, generation reports why and can be retried later.
 
 Upstream: <https://huggingface.co/collections/prism-ml/bonsai-image>
 

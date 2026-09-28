@@ -1,20 +1,12 @@
-"""Image generation, driven through the image scaffold's own CLI.
+"""Image requests and gallery metadata; local execution is the default.
 
-Nothing here reimplements a diffusion pipeline. The scaffold that owns these
-weights already has a working command with a local path and a remote one, and
-it is the copy that is actually tested against them — so this drives that
-command and confines itself to the parts a UI is better at: composing a
-request, remembering what was asked, and showing the result.
-
-Which backend to use is a fact about the machine, not a preference. A card that
-cannot execute the kernels fails at the first launch, minutes into a model
-load, so the backend is chosen from what `doctor` reports rather than from a
-default that is wrong half the time.
+Remote execution is an explicit user choice and requires a configured CLI.
 """
 from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 import shutil
 import subprocess
 import time
@@ -48,7 +40,7 @@ class ImageError(RuntimeError):
 
 
 def cli_path() -> str | None:
-    """Return the image scaffold's CLI, or None when it is not installed."""
+    """Use an explicit/legacy CLI when present, otherwise the bundled runtime."""
     override = os.environ.get("KILIX_BONSAI_IMAGE_CLI")
     if override:
         return override if os.access(override, os.X_OK) else None
@@ -60,27 +52,24 @@ def cli_path() -> str | None:
                          "bonsai_image_generation", "bonsai")):
         if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
             return candidate
-    return shutil.which("bonsai")
+    bundled = Path(__file__).resolve().parents[3] / "tools/bonsai-image/main.py"
+    return shutil.which("bonsai") or str(bundled)
 
 
-def probe_backends(timeout: float = 120.0) -> dict[str, tuple[bool, str]]:
-    """Ask the CLI which backends actually work here.
-
-    Returns {backend: (usable, one-line reason)}. Both are probed because the
-    answer differs per machine and neither is a safe assumption: this host
-    cannot run the kernels locally but has a remote that can, and a laptop with
-    no remote configured is the exact mirror image.
-    """
+def probe_backends(timeout: float = 120.0, *,
+                   include_remote: bool = False) -> dict[str, tuple[bool, str]]:
+    """Check local availability; remote probes require explicit selection."""
     cli = cli_path()
     if cli is None:
         return {LOCAL: (False, "the image CLI was not found"),
                 REMOTE: (False, "the image CLI was not found")}
     results = {}
     probes = [(LOCAL, [cli, "doctor"])]
-    if REMOTE_SUBCOMMAND:
+    if REMOTE_SUBCOMMAND and include_remote:
         probes.append((REMOTE, [cli, REMOTE_SUBCOMMAND, "doctor"]))
     else:
-        results[REMOTE] = (False, "KILIX_BONSAI_IMAGE_REMOTE is not set")
+        results[REMOTE] = (False, "select remote to probe it" if REMOTE_SUBCOMMAND
+                           else "KILIX_BONSAI_IMAGE_REMOTE is not set")
     for backend, argv in probes:
         try:
             done = subprocess.run(argv, capture_output=True, text=True,
@@ -107,7 +96,7 @@ class Request:
     seed: int | None = None
     steps: int | None = None
     input_image: str | None = None
-    backend: str = REMOTE
+    backend: str = LOCAL
 
     @property
     def size(self) -> str:
@@ -224,7 +213,7 @@ class Gallery:
                     width=width, height=height,
                     seed=saved.get("seed"), steps=saved.get("steps"),
                     input_image=saved.get("input_image"),
-                    backend=saved.get("backend", REMOTE)),
+                    backend=saved.get("backend", LOCAL)),
                 path=path, ok=True, detail="from a previous session",
                 seconds=seconds))
 

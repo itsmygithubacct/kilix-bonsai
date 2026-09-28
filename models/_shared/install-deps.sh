@@ -104,6 +104,13 @@ if [ "${#missing[@]}" -gt 0 ]; then
   fi
 fi
 
+if [ -x "$MODEL_DIR/install-runtime.sh" ]; then
+  if [ "$CHECK_ONLY" = 1 ]; then
+    exec "$MODEL_DIR/install-runtime.sh" --check
+  fi
+  "$MODEL_DIR/install-runtime.sh"
+fi
+
 # ---------------------------------------------------------------- python ----
 if [ "${#pip_packages[@]}" -gt 0 ]; then
   if [ "$CHECK_ONLY" = 1 ]; then
@@ -132,12 +139,13 @@ stamp="$store/.kilix-bonsai-deps.json"
 python3 - "$stamp" "$MODEL_ID" "$venv" "${#missing[@]}" \
          "${apt_packages[*]-}" "${pip_packages[*]-}" <<'PY'
 import json
+import os
 import sys
 
 path, model_id, venv, missing, apt_packages, pip_packages = sys.argv[1:7]
 document = {
     "model": model_id,
-    "venv": venv if pip_packages.strip() else None,
+    "venv": venv if os.path.isfile(os.path.join(venv, "bin", "python")) else None,
     "apt": apt_packages.split(),
     "pip": pip_packages.split(),
     # Recorded rather than asserted: with the default (no --apt) a system

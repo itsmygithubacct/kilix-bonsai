@@ -6,8 +6,8 @@ and stay set between runs; every result is written with a sidecar recording
 exactly what produced it; and `u` re-loads any past generation's settings so
 "that one, but warmer light" is two keystrokes rather than retyping.
 
-Reference images are first class — `i` picks one, and the gallery can feed its
-own output back in, which is how an edit chain works.
+Reference images require an external runtime that supports them. The bundled
+local pipeline reports this limitation when a reference is supplied.
 
 Generation runs on a worker thread; the UI keeps painting and the elapsed time
 keeps moving, because a minute of frozen terminal reads as a crash.
@@ -19,6 +19,7 @@ import os
 import sys
 import threading
 import time
+import textwrap
 
 sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
@@ -52,27 +53,21 @@ class State:
         self.view = "compose"
 
     def probe(self) -> None:
-        """Ask which backends work here, off the UI thread.
+        """Probe availability without changing the user's selected backend."""
+        selected = self.request.backend
 
-        Both are probed rather than assumed: a host whose GPU cannot execute
-        the kernels may still have a remote that can, and the reverse is just
-        as common.
-        """
         def work() -> None:
-            self.backends = backend.probe_backends()
-            usable = [name for name, (ok, _) in self.backends.items() if ok]
-            if usable:
-                self.request.backend = (backend.LOCAL
-                                        if backend.LOCAL in usable
-                                        else usable[0])
-                self.status = f"ready · {self.request.backend}"
-            else:
-                self.status = "no usable image backend"
+            self.backends = backend.probe_backends(
+                include_remote=selected == backend.REMOTE)
+            if selected != self.request.backend:
+                return
+            ok, reason = self.backends.get(selected, (False, "unprobed"))
+            self.status = f"ready · {selected}" if ok else f"{selected}: {reason}"
         threading.Thread(target=work, daemon=True).start()
 
     @property
     def ready(self) -> bool:
-        return any(ok for ok, _ in self.backends.values())
+        return self.backends.get(self.request.backend, (False, ""))[0]
 
     def load_field(self) -> None:
         """Put the selected field's current value into the editor."""
@@ -120,6 +115,7 @@ class State:
         self.request.backend = order[(current + 1) % len(order)]
         ok, why = self.backends.get(self.request.backend, (False, "unprobed"))
         self.status = f"{self.request.backend}: {'ready' if ok else why}"
+        self.probe()
 
     def generate(self) -> None:
         if self.running:
@@ -265,7 +261,11 @@ class PixelRenderer(pixel.Renderer):
         left, top, right, bottom = body.box
         gap = max(6, int(9 * body.scale))
         summary_h = max(48, int(64 * body.scale))
-        fields_bottom = bottom - summary_h - gap
+        status_lines = textwrap.wrap(state.status, max(20, int(
+            (right - left) / max(1, 7 * body.scale))))[:4]
+        status_row = max(16, int(20 * body.scale))
+        status_height = status_row * len(status_lines)
+        fields_bottom = bottom - summary_h - gap - status_height
         row_h = max(34, (fields_bottom - top)
                     // max(1, len(FIELDS)))
         values = {
@@ -322,6 +322,10 @@ class PixelRenderer(pixel.Renderer):
         body.text((mid + gap + pad, summary[1] + 20, right - pad,
                    bottom - 3), preset, size=16, bold=True,
                   color=body.tango.WHITE)
+        for index, line in enumerate(status_lines):
+            y = bottom - summary_h - gap - status_height + index * status_row
+            body.text((left, y, right, y + status_row), line,
+                      size=10, color=body.tango.WHITE)
         if state.running:
             body.draw.fill((left, bottom - max(3, int(4 * body.scale)),
                             right, bottom), body.tango.BLUE_BRIGHT)
@@ -407,6 +411,10 @@ def render_compose(surface, state: State, top: int, left: int,
         screen.write(surface, row, left,
                      f"  {len(state.gallery.entries)} generations · "
                      "g for the gallery")
+    for offset, line in enumerate(textwrap.wrap(state.status, max(1, width - 4))):
+        if row + 2 + offset >= top + well:
+            break
+        screen.write(surface, row + 2 + offset, left + 2, line)
     if state.running:
         elapsed = time.monotonic() - state.started
         screen.write(surface, min(row + 2, height - 1), left,

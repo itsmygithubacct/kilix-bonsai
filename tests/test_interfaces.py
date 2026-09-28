@@ -14,6 +14,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
@@ -149,6 +150,15 @@ class InterfaceRenderTest(unittest.TestCase):
         state.show_help = True
         self._exercise(module, state, [])
 
+    def test_image_error_includes_the_retry_instruction(self) -> None:
+        module = load_tool("kilix-bonsai-image")
+        state = module.State(catalog.find("bonsai-image-4b"))
+        state.status = ("Error: GPU busy: 260 MiB free; local images need at least "
+                        "4500 MiB. Retry after other GPU jobs finish.")
+        frame = screen.render_to_text(module.render, state)
+        self.assertIn("GPU busy", frame)
+        self.assertIn("Retry after other GPU jobs finish.", " ".join(frame.split()))
+
     def test_speech(self) -> None:
         module = load_tool("kilix-bonsai-speech")
         state = module.State(catalog.find("vibevoice-asr-bitnet"))
@@ -166,6 +176,26 @@ class ImageRequestTest(unittest.TestCase):
 
     def test_an_empty_prompt_is_refused(self) -> None:
         self.assertIn("prompt", image.Request(prompt="  ").validate() or "")
+
+    def test_images_default_to_local(self) -> None:
+        self.assertEqual(image.Request(prompt="a cat").backend, image.LOCAL)
+
+    def test_failed_local_probe_does_not_select_remote(self) -> None:
+        module = load_tool("kilix-bonsai-image")
+        with tempfile.TemporaryDirectory() as home, patch.dict(os.environ, {"HOME": home}):
+            state = module.State(catalog.find("bonsai-image-4b"))
+        class InlineThread:
+            def __init__(self, target, **kwargs):
+                self.target = target
+            def start(self):
+                self.target()
+        with patch.object(module.threading, "Thread", InlineThread), patch.object(
+                image, "probe_backends", return_value={
+                    image.LOCAL: (False, "GPU busy"), image.REMOTE: (True, "ready")}):
+            state.probe()
+        self.assertEqual(state.request.backend, image.LOCAL)
+        self.assertFalse(state.ready)
+        self.assertIn("GPU busy", state.status)
 
     def test_a_missing_reference_is_refused(self) -> None:
         request = image.Request(prompt="x", input_image="/no/such/file.png")

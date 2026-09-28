@@ -19,7 +19,7 @@
       "python3-venv"
     ],
     "pip": [],
-    "note": "The gemlite/HQQ CUDA stack is large and version-sensitive, so it is resolved from the image scaffold's own lock rather than pinned a second time here. Needs an NVIDIA GPU of compute capability 7.0 or newer."
+    "note": "install-deps.sh installs the pinned local CUDA runtime in an isolated Python 3.11 environment using uv. Weights are downloaded separately. Remote execution is opt-in."
   },
   "runtime": {
     "kind": "image",
