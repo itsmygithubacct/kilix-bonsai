@@ -62,7 +62,16 @@ def generate(args: argparse.Namespace) -> None:
     if total < 8 * 1024**3:
         # Keep VAE decoding off small GPUs. The pinned pipeline transfers the
         # final latents to the VAE device, so this needs no kernel patching.
-        pipe._vae.to('cpu')
+        pipe._vae.to(device='cpu', dtype=torch.float32)
+        # The pinned GPU pipeline supplies bf16 latents even on CPU. Convert
+        # them at the decoder boundary: bf16 convolutions can take minutes on
+        # CPUs without native bf16 instructions, while float32 uses fast kernels.
+        decode = pipe._vae.decode
+
+        def decode_cpu(latents, *args, **kwargs):
+            return decode(latents.float(), *args, **kwargs)
+
+        pipe._vae.decode = decode_cpu
         torch.cuda.empty_cache()
     seed = args.seed if args.seed is not None else secrets.randbelow(2**31)
     print(f'Generating locally: {width}x{height}, seed {seed}…', flush=True)

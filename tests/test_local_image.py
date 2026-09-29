@@ -48,6 +48,32 @@ class LocalImageTest(unittest.TestCase):
             local_image.generate(self.request(output=str(output)))
             self.assertEqual(output.read_bytes(), b'generated image')
 
+    def test_small_gpu_decoder_uses_float32_model_and_inputs(self):
+        torch = Mock()
+        torch.cuda.mem_get_info.return_value = (5000 * 1024**2, 6000 * 1024**2)
+        vae = Mock()
+        decoder = vae.decode
+        latents = Mock()
+
+        class Pipeline:
+            def __init__(self, **kwargs):
+                self._vae = vae
+
+            def prewarm(self):
+                pass
+
+            def generate_png(self, **kwargs):
+                self._vae.decode(latents, return_dict=False)
+                return b'generated image'
+
+        with tempfile.TemporaryDirectory() as directory, patch.object(
+                local_image, 'check'), patch.object(local_image, 'weights', return_value=Path(directory)), patch.dict(
+                sys.modules, {'torch': torch, 'backend_gpu.pipeline_gpu': Mock(GpuPipeline=Pipeline)}):
+            local_image.generate(self.request(output=str(Path(directory) / 'result.png')))
+        vae.to.assert_called_once_with(device='cpu', dtype=torch.float32)
+        latents.float.assert_called_once_with()
+        decoder.assert_called_once_with(latents.float.return_value, return_dict=False)
+
     def test_reference_is_refused_explicitly(self):
         with self.assertRaisesRegex(ValueError, 'reference images are not supported'):
             local_image.generate(self.request(input_image='reference.png'))
