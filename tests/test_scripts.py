@@ -320,6 +320,29 @@ class LicenceGateTest(unittest.TestCase):
         self.assertNotIn("curl", called)
         self.assertNotIn("wget", called)
 
+    def test_a_tampered_installed_file_is_not_called_complete(self) -> None:
+        # Seat 2 round 2 (0.2.2 RC3): with every file already the right size,
+        # pull.sh said "already complete" without hashing anything.
+        import json
+        with open(os.path.join(ROOT, "models", "vibevoice-asr-bitnet", "MODEL.json")) as handle:
+            members = [m for v in json.load(handle)["variants"][:1]
+                       for s in v["sources"] for m in s["files"]]
+
+        def installed_but_tampered(home):
+            target = os.path.join(home, "vibevoice")
+            os.makedirs(target)
+            for member in members:
+                # Sparse, correctly sized files; config.json's bytes are wrong.
+                with open(os.path.join(target, member["path"]), "wb") as handle:
+                    handle.truncate(member["size"])
+            return ()
+
+        result, calls = self.pull("vibevoice-asr-bitnet", check_exit=0,
+                                  prepare=installed_but_tampered)
+        self.assertNotIn("already complete", result.stderr)
+        self.assertNotEqual(result.returncode, 0, result.stderr)
+        self.assertIn("curl", calls)                 # it tried to replace them
+
     def test_a_tampered_local_copy_is_never_adopted(self) -> None:
         # Seat 1 (0.2.2 RC3): same-length edits of config.json, which had a
         # digest, and tokenizer_config.json, which had none.

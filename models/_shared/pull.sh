@@ -120,8 +120,11 @@ while IFS=$'\t' read -r kind path size sha url; do
   [ "$kind" = FILE ] || continue
   count=$((count + 1))
   target="$directory/$path"
+  # A present file counts only when its bytes are the pinned ones: a
+  # same-length substitute must not make the model look complete.
   if [ "$FORCE" = 0 ] && [ -f "$target" ] \
-     && [ "$(stat -c %s -- "$target" 2>/dev/null || echo 0)" = "$size" ]; then
+     && [ "$(stat -c %s -- "$target" 2>/dev/null || echo 0)" = "$size" ] \
+     && { [ "$sha" = "-" ] || [ "$(sha256sum -- "$target" | cut -d' ' -f1)" = "$sha" ]; }; then
     continue
   fi
   outstanding=$((outstanding + size))
