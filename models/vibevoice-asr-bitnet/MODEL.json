@@ -62,22 +62,22 @@
             {
               "path": "tokenizer.json",
               "size": 7028015,
-              "sha256": null
+              "sha256": "f7c9b2dba4a296b1aa76c16a34b8225c0c118978400d4bb66bff0902d702f5b8"
             },
             {
               "path": "tokenizer_config.json",
               "size": 1289,
-              "sha256": null
+              "sha256": "80d64fccf954f022eb43b7425eb45a133cbb92c76a5f24d4cea6dbe3d45548d9"
             },
             {
               "path": "vocab.json",
               "size": 2776833,
-              "sha256": null
+              "sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910"
             },
             {
               "path": "README.md",
               "size": 4124,
-              "sha256": null
+              "sha256": "ec5efef050b03bc294ba21db1913a4ebbb842f258c82fd5bcef762d0abe42aa3"
             }
           ]
         }
@@ -112,7 +112,7 @@
             {
               "path": "model.safetensors.index.json",
               "size": 120151,
-              "sha256": null
+              "sha256": "89f02fb82c9228373f199303996451b3b20cd8207186c2975fded695fcdd456b"
             },
             {
               "path": "config.json",
@@ -127,17 +127,17 @@
             {
               "path": "tokenizer.json",
               "size": 7028015,
-              "sha256": null
+              "sha256": "f7c9b2dba4a296b1aa76c16a34b8225c0c118978400d4bb66bff0902d702f5b8"
             },
             {
               "path": "tokenizer_config.json",
               "size": 1289,
-              "sha256": null
+              "sha256": "80d64fccf954f022eb43b7425eb45a133cbb92c76a5f24d4cea6dbe3d45548d9"
             },
             {
               "path": "vocab.json",
               "size": 2776833,
-              "sha256": null
+              "sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910"
             }
           ]
         }

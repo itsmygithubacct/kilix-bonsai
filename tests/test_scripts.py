@@ -233,8 +233,10 @@ if __name__ == "__main__":
 class LicenceGateTest(unittest.TestCase):
     """A model whose MODEL.json names a licence_gate downloads nothing without a receipt."""
 
-    def pull(self, model_id, *args, check_exit=None):
+    def pull(self, model_id, *args, check_exit=None, prepare=None, installed=None):
         with tempfile.TemporaryDirectory() as home:
+            if prepare is not None:
+                args = tuple(prepare(home)) + args
             bin_dir = os.path.join(home, "bin")
             os.mkdir(bin_dir)
             calls = os.path.join(home, "calls")
@@ -259,7 +261,88 @@ class LicenceGateTest(unittest.TestCase):
             result = subprocess.run([script, *args], capture_output=True, text=True,
                                     env=env, timeout=120)
             called = open(calls).read().split("\n") if os.path.exists(calls) else []
+            if installed is not None:
+                target = os.path.join(home, "vibevoice")
+                for name in (os.listdir(target) if os.path.isdir(target) else ()):
+                    with open(os.path.join(target, name), "rb") as handle:
+                        installed[name] = handle.read()
             return result, [line for line in called if line]
+
+    def test_there_is_no_way_to_skip_verification(self) -> None:
+        result, calls = self.pull("vibevoice-asr-bitnet", "--no-verify", check_exit=0)
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertEqual(calls, [])
+
+    def test_every_member_of_a_gated_model_has_a_pinned_digest(self) -> None:
+        import json
+        for model in catalog.load():
+            if not model.licence_gate:
+                continue
+            with open(os.path.join(ROOT, "models", model.id, "MODEL.json")) as handle:
+                document = json.load(handle)
+            for variant in document["variants"]:
+                for source in variant["sources"]:
+                    for member in source["files"]:
+                        with self.subTest(model=model.id, variant=variant["id"],
+                                          path=member["path"]):
+                            self.assertRegex(member.get("sha256") or "", r"^[0-9a-f]{64}$")
+
+    def test_a_gated_member_without_a_digest_stops_the_pull(self) -> None:
+        import json
+        import shutil
+        with tempfile.TemporaryDirectory() as root:
+            copy = os.path.join(root, "repo")
+            shutil.copytree(ROOT, copy, ignore=shutil.ignore_patterns(".git", "__pycache__"))
+            manifest = os.path.join(copy, "models", "vibevoice-asr-bitnet", "MODEL.json")
+            with open(manifest) as handle:
+                document = json.load(handle)
+            document["variants"][0]["sources"][0]["files"][-1]["sha256"] = None
+            with open(manifest, "w") as handle:
+                json.dump(document, handle)
+            home = os.path.join(root, "home")
+            bin_dir = os.path.join(home, "bin")
+            os.makedirs(bin_dir)
+            calls = os.path.join(home, "calls")
+            for tool, body in (("curl", "exit 1"), ("wget", "exit 1"), ("kilix-stt", "exit 0")):
+                path = os.path.join(bin_dir, tool)
+                with open(path, "w") as handle:
+                    handle.write(f"#!/bin/sh\necho {tool} >>{calls!r}\n{body}\n")
+                os.chmod(path, 0o755)
+            env = dict(os.environ, HOME=home, PATH=f"{bin_dir}:/usr/bin:/bin",
+                       KILIX_DATA_HOME=os.path.join(home, "data"),
+                       KILIX_BONSAI_VIBEVOICE_DIR=os.path.join(home, "vibevoice"))
+            result = subprocess.run(
+                [os.path.join(copy, "models", "vibevoice-asr-bitnet", "pull.sh")],
+                capture_output=True, text=True, env=env, timeout=120)
+            called = open(calls).read().split() if os.path.exists(calls) else []
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("has no pinned sha256", result.stderr)
+        self.assertNotIn("curl", called)
+        self.assertNotIn("wget", called)
+
+    def test_a_tampered_local_copy_is_never_adopted(self) -> None:
+        # Seat 1 (0.2.2 RC3): same-length edits of config.json, which had a
+        # digest, and tokenizer_config.json, which had none.
+        import json
+        with open(os.path.join(ROOT, "models", "vibevoice-asr-bitnet", "MODEL.json")) as handle:
+            members = {m["path"]: m for v in json.load(handle)["variants"][:1]
+                       for s in v["sources"] for m in s["files"]}
+
+        def tampered(home):
+            source = os.path.join(home, "copy")
+            os.mkdir(source)
+            for name in ("config.json", "tokenizer_config.json"):
+                with open(os.path.join(source, name), "wb") as handle:
+                    handle.write(b"x" * members[name]["size"])
+            return ("--from", source)
+
+        installed = {}
+        result, calls = self.pull("vibevoice-asr-bitnet", check_exit=0,
+                                  prepare=tampered, installed=installed)
+        self.assertNotEqual(result.returncode, 0, result.stderr)
+        self.assertIn("curl", calls)                 # fell through to fetching
+        for name in ("config.json", "tokenizer_config.json"):
+            self.assertNotEqual(installed.get(name), b"x" * members[name]["size"], name)
 
     def test_the_speech_model_declares_its_gate(self) -> None:
         gated = {model.id: model.licence_gate for model in catalog.load() if model.licence_gate}

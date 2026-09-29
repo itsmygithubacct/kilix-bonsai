@@ -24,12 +24,11 @@ MODEL_DIR=""
 VARIANT=""
 FORCE=0
 DRY_RUN=0
-NO_VERIFY=0
 FROM=""
 
 usage() {
   cat <<'EOF'
-usage: pull.sh [--variant ID] [--from DIR] [--force] [--dry-run] [--no-verify]
+usage: pull.sh [--variant ID] [--from DIR] [--force] [--dry-run]
 
   --variant ID   download a non-default variant (see MODEL.json)
   --from DIR     take files from a copy already on this machine instead of
@@ -37,9 +36,10 @@ usage: pull.sh [--variant ID] [--from DIR] [--force] [--dry-run] [--no-verify]
                  sha256, and anything DIR does not have is downloaded normally
   --force        re-download files that are already present and verified
   --dry-run      print what would be fetched, touch nothing
-  --no-verify    skip sha256 checking (not recommended; the digests are the
-                 only thing standing between a truncated proxy response and a
-                 model that loads to garbage)
+
+Every file is checked against its published sha256; there is no way to skip
+that. The digests are the only thing standing between a truncated proxy
+response and a model that loads to garbage.
 EOF
 }
 
@@ -50,7 +50,6 @@ while (($#)); do
     --from) FROM="${2:-}"; shift 2 ;;
     --force) FORCE=1; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
-    --no-verify) NO_VERIFY=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) printf 'pull.sh: unknown option: %s\n' "$1" >&2; usage >&2; exit 2 ;;
   esac
@@ -66,8 +65,7 @@ die() { printf 'kilix-bonsai: %s\n' "$*" >&2; exit 1; }
 log() { printf 'kilix-bonsai: %s\n' "$*" >&2; }
 
 command -v python3 >/dev/null 2>&1 || die "python3 is required"
-command -v sha256sum >/dev/null 2>&1 || [ "$NO_VERIFY" = 1 ] \
-  || die "sha256sum is required (or pass --no-verify)"
+command -v sha256sum >/dev/null 2>&1 || die "sha256sum is required"
 
 downloader=""
 if command -v curl >/dev/null 2>&1; then downloader=curl
@@ -103,6 +101,14 @@ if [ -n "$licence_gate" ] && [ "$DRY_RUN" = 0 ]; then
   gate_status=0
   "$gate_tool" --check-licence "$licence_gate" || gate_status=$?
   [ "$gate_status" = 0 ] || exit "$gate_status"
+fi
+# A licence-gated model is one the release says is verified against pinned
+# digests, so every member must have one: refuse before fetching anything.
+if [ -n "$licence_gate" ]; then
+  while IFS=$'\t' read -r kind path size sha url; do
+    [ "$kind" = FILE ] || continue
+    [ "$sha" != "-" ] || die "$path in $title has no pinned sha256; refusing to install it"
+  done <<<"$plan"
 fi
 
 # Files that are already present at the right size and digest are not fetched
@@ -170,7 +176,7 @@ while IFS=$'\t' read -r kind path size sha url; do
 
   if [ "$FORCE" = 0 ] && [ -f "$target" ] \
      && [ "$(stat -c %s -- "$target" 2>/dev/null || echo 0)" = "$size" ]; then
-    if [ "$NO_VERIFY" = 1 ] || [ "$sha" = "-" ]; then
+    if [ "$sha" = "-" ]; then
       continue
     fi
     if [ "$(sha256sum -- "$target" | cut -d' ' -f1)" = "$sha" ]; then
@@ -188,7 +194,7 @@ while IFS=$'\t' read -r kind path size sha url; do
   # being wrong is not a reason to refuse the model.
   if [ -n "$FROM" ] && [ -f "$FROM/$path" ]; then
     local_size="$(stat -c %s -- "$FROM/$path" 2>/dev/null || echo 0)"
-    if [ "$local_size" = "$size" ] && { [ "$NO_VERIFY" = 1 ] || [ "$sha" = "-" ] \
+    if [ "$local_size" = "$size" ] && { [ "$sha" = "-" ] \
          || [ "$(sha256sum -- "$FROM/$path" | cut -d' ' -f1)" = "$sha" ]; }; then
       printf '[%d/%d] %s (%s) — from %s\n' \
         "$index" "$count" "$path" "$(human "$size")" "$FROM" >&2
@@ -234,7 +240,7 @@ while IFS=$'\t' read -r kind path size sha url; do
     failed=$((failed + 1))
     continue
   fi
-  if [ "$NO_VERIFY" = 0 ] && [ "$sha" != "-" ]; then
+  if [ "$sha" != "-" ]; then
     if [ "$(sha256sum -- "$part" | cut -d' ' -f1)" != "$sha" ]; then
       log "$path: sha256 mismatch — upstream content changed, or the transfer"
       log "$path: was corrupted. Discarding it rather than installing it."
