@@ -78,6 +78,7 @@ def generate(args: argparse.Namespace) -> None:
 
 def generate_verified(args,root,width,height,total,variant,pipeline_gpu,torch):
     pipe = pipeline_gpu.GpuPipeline(backend='bonsai-'+variant+'-gemlite',
+                       device='cuda:0',
                        binary_transformer_path=root / 'transformer-gemlite-int1',
                        ternary_transformer_path=root / 'transformer-gemlite-int2',
                        text_encoder_path=root / 'text_encoder-hqq-4bit',

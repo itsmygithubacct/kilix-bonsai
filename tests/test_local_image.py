@@ -62,10 +62,12 @@ class LocalImageTest(unittest.TestCase):
         vae.eval.return_value = vae
         decoder = vae.decode
         latents = Mock()
+        devices = []
 
         class Pipeline:
             def __init__(self, **kwargs):
                 self._vae = vae
+                devices.append(kwargs['device'])
 
             def prewarm(self):
                 self._vae = backend._load_vae(Path('private-vae'),device='cuda:0')
@@ -85,6 +87,7 @@ class LocalImageTest(unittest.TestCase):
         vae.to.assert_called_once_with('cpu')
         diffusers.AutoencoderKLFlux2.from_pretrained.assert_called_once_with(
             'private-vae',torch_dtype=torch.float32,local_files_only=True)
+        self.assertEqual(devices,['cuda:0'])
         latents.float.assert_called_once_with()
         decoder.assert_called_once_with(latents.float.return_value, return_dict=False)
 
