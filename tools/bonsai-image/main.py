@@ -13,6 +13,6 @@ if Path(sys.prefix) != python.parent.parent:
     if not python.exists():
         print(f"result: unavailable: install dependencies with {ROOT / 'models/bonsai-image-4b/install-deps.sh'}")
         sys.exit(1)
-    os.execv(str(python), [str(python), str(Path(__file__).resolve()), *sys.argv[1:]])
+    os.execv(str(python), [str(python), '-I', '-B', str(Path(__file__).resolve()), *sys.argv[1:]])
 from kilix_bonsai.runtime.local_image import main
 sys.exit(main())

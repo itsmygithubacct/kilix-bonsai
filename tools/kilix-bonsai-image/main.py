@@ -30,7 +30,7 @@ from kilix_bonsai.runtime import image as backend                # noqa: E402
 
 TITLE = "Kilix Bonsai Image"
 
-FIELDS = ("prompt", "reference", "size", "seed", "steps")
+FIELDS = ("prompt", "reference", "size", "seed", "steps", "variant")
 
 
 class State:
@@ -39,6 +39,10 @@ class State:
         self.editor = widgets.Editor()
         self.field = 0
         self.request = backend.Request(prompt="")
+        from kilix_bonsai import store
+        if (store.state(model).state != store.PRESENT and
+                store.state(model, model.variant('binary-gemlite')).state == store.PRESENT):
+            self.request.variant = 'binary'
         self.preset = 0
         self.gallery = backend.Gallery(
             os.path.join(os.path.expanduser("~"), "kilix-bonsai-images"))
@@ -55,12 +59,15 @@ class State:
     def probe(self) -> None:
         """Probe availability without changing the user's selected backend."""
         selected = self.request.backend
+        variant = self.request.variant
+        self.backends = {}
 
         def work() -> None:
-            self.backends = backend.probe_backends(
-                include_remote=selected == backend.REMOTE)
-            if selected != self.request.backend:
+            results = backend.probe_backends(
+                include_remote=selected == backend.REMOTE, variant=variant)
+            if selected != self.request.backend or variant != self.request.variant:
                 return
+            self.backends = results
             ok, reason = self.backends.get(selected, (False, "unprobed"))
             self.status = f"ready · {selected}" if ok else f"{selected}: {reason}"
         threading.Thread(target=work, daemon=True).start()
@@ -79,6 +86,7 @@ class State:
             "seed": "" if self.request.seed is None else str(self.request.seed),
             "steps": "" if self.request.steps is None
                      else str(self.request.steps),
+            "variant": self.request.variant,
         }[name]
         self.editor.set(value)
 
@@ -100,6 +108,12 @@ class State:
             self.request.seed = int(text) if text.lstrip("-").isdigit() else None
         elif name == "steps":
             self.request.steps = int(text) if text.isdigit() else None
+        elif name == "variant":
+            if text not in ('ternary', 'binary'):
+                self.status = "variant must be ternary or binary"
+            elif text != self.request.variant:
+                self.request.variant = text
+                self.probe()
 
     def cycle_preset(self) -> None:
         self.preset = (self.preset + 1) % len(backend.PRESETS)
@@ -149,6 +163,7 @@ class State:
         entry = self.gallery.entries[self.selected]
         self.request = backend.Request(**vars(entry.request))
         self.load_field()
+        self.probe()
         self.status = f"loaded the settings from {os.path.basename(entry.path)}"
 
     def use_as_reference(self) -> None:
@@ -224,7 +239,7 @@ class PixelRenderer(pixel.Renderer):
             state.field, state.preset, state.selected,
             state.editor.text, state.editor.cursor,
             request.prompt, request.input_image, request.width,
-            request.height, request.seed, request.steps, request.backend,
+            request.height, request.seed, request.steps, request.backend, request.variant,
             tuple(sorted(state.backends.items())),
             tuple((entry.path, entry.request.prompt, entry.request.size)
                   for entry in state.gallery.entries),
@@ -276,6 +291,7 @@ class PixelRenderer(pixel.Renderer):
                     else str(state.request.seed),
             "steps": "Default" if state.request.steps is None
                      else str(state.request.steps),
+            "variant": state.request.variant,
         }
         for index, name in enumerate(FIELDS):
             y = top + index * row_h
@@ -384,6 +400,7 @@ def render_compose(surface, state: State, top: int, left: int,
                 else str(state.request.seed),
         "steps": "default" if state.request.steps is None
                  else str(state.request.steps),
+        "variant": state.request.variant,
     }
     row = top
     for index, name in enumerate(FIELDS):

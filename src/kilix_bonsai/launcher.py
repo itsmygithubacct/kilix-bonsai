@@ -60,7 +60,7 @@ def launchable(model: Model) -> tuple[bool, str]:
         return False, "no interface for this model"
     if tool_argv(model) is None:
         return False, f"{TOOLS[kind][0]} is not installed"
-    if store.state(model).state != store.PRESENT:
+    if not any(store.state(model, variant).state == store.PRESENT for variant in model.variants):
         return False, "not downloaded yet"
     return True, TOOLS[kind][1]
 

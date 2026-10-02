@@ -1,5 +1,6 @@
 """Local image errors are actionable and never allocate a model on a busy GPU."""
 import argparse
+from contextlib import contextmanager
 from pathlib import Path
 import sys
 import tempfile
@@ -10,6 +11,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 from kilix_bonsai.runtime import image, local_image
 
 class LocalImageTest(unittest.TestCase):
+    @contextmanager
+    def view(self, directory):
+        yield Path(directory)
+
     def request(self, **changes):
         values = dict(prompt='a fire kitten', size='512x512', steps=4,
                       seed=1, input_image=None, output='unused.png')
@@ -42,8 +47,9 @@ class LocalImageTest(unittest.TestCase):
         self_test = self
         backend = Mock(GpuPipeline=Pipeline)
         with tempfile.TemporaryDirectory() as directory, patch.object(
-                local_image, 'check'), patch.object(local_image, 'weights', return_value=Path(directory)), patch.dict(
-                sys.modules, {'torch': torch, 'backend_gpu.pipeline_gpu': backend}):
+                local_image, 'check'), patch.object(local_image, 'model_view', side_effect=lambda *_: self.view(directory)), patch.dict(
+                sys.modules, {'torch': torch, 'backend_gpu':Mock(pipeline_gpu=backend),
+                              'backend_gpu.pipeline_gpu': backend}):
             output = Path(directory) / 'result.png'
             local_image.generate(self.request(output=str(output)))
             self.assertEqual(output.read_bytes(), b'generated image')
@@ -52,6 +58,8 @@ class LocalImageTest(unittest.TestCase):
         torch = Mock()
         torch.cuda.mem_get_info.return_value = (5000 * 1024**2, 6000 * 1024**2)
         vae = Mock()
+        vae.to.return_value = vae
+        vae.eval.return_value = vae
         decoder = vae.decode
         latents = Mock()
 
@@ -60,17 +68,23 @@ class LocalImageTest(unittest.TestCase):
                 self._vae = vae
 
             def prewarm(self):
-                pass
+                self._vae = backend._load_vae(Path('private-vae'),device='cuda:0')
 
             def generate_png(self, **kwargs):
                 self._vae.decode(latents, return_dict=False)
                 return b'generated image'
 
+        backend=Mock(GpuPipeline=Pipeline)
+        diffusers=Mock()
+        diffusers.AutoencoderKLFlux2.from_pretrained.return_value=vae
         with tempfile.TemporaryDirectory() as directory, patch.object(
-                local_image, 'check'), patch.object(local_image, 'weights', return_value=Path(directory)), patch.dict(
-                sys.modules, {'torch': torch, 'backend_gpu.pipeline_gpu': Mock(GpuPipeline=Pipeline)}):
+                local_image, 'check'), patch.object(local_image, 'model_view', side_effect=lambda *_: self.view(directory)), patch.dict(
+                sys.modules, {'torch': torch,'backend_gpu':Mock(pipeline_gpu=backend),
+                              'backend_gpu.pipeline_gpu': backend,'diffusers':diffusers}):
             local_image.generate(self.request(output=str(Path(directory) / 'result.png')))
-        vae.to.assert_called_once_with(device='cpu', dtype=torch.float32)
+        vae.to.assert_called_once_with('cpu')
+        diffusers.AutoencoderKLFlux2.from_pretrained.assert_called_once_with(
+            'private-vae',torch_dtype=torch.float32,local_files_only=True)
         latents.float.assert_called_once_with()
         decoder.assert_called_once_with(latents.float.return_value, return_dict=False)
 
@@ -85,4 +99,8 @@ class LocalImageTest(unittest.TestCase):
                 image.subprocess, 'run', return_value=done) as run:
             image.probe_backends()
         self.assertEqual(run.call_count, 1)
-        self.assertEqual(run.call_args.args[0], ['/example/bonsai', 'doctor'])
+        self.assertEqual(run.call_args.args[0], ['/example/bonsai', 'doctor', '--variant', 'ternary'])
+
+
+if __name__ == '__main__':
+    unittest.main()

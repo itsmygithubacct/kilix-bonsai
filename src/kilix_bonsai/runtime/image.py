@@ -7,7 +7,6 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-import shutil
 import subprocess
 import time
 from dataclasses import dataclass, field
@@ -40,31 +39,23 @@ class ImageError(RuntimeError):
 
 
 def cli_path() -> str | None:
-    """Use an explicit/legacy CLI when present, otherwise the bundled runtime."""
+    """Use the guarded bundled runtime unless an external CLI is explicit."""
     override = os.environ.get("KILIX_BONSAI_IMAGE_CLI")
     if override:
         return override if os.access(override, os.X_OK) else None
-    for candidate in (
-            os.path.join(os.path.expanduser("~"), "bonsai_image_generation",
-                         "bonsai"),
-            os.path.join(os.environ.get("GPU_TERMINAL_SOURCE_HOME")
-                         or os.path.expanduser("~/.local/gpu_terminal/sources"),
-                         "bonsai_image_generation", "bonsai")):
-        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
-            return candidate
     bundled = Path(__file__).resolve().parents[3] / "tools/bonsai-image/main.py"
-    return shutil.which("bonsai") or str(bundled)
+    return str(bundled)
 
 
 def probe_backends(timeout: float = 120.0, *,
-                   include_remote: bool = False) -> dict[str, tuple[bool, str]]:
+                   include_remote: bool = False, variant: str = 'ternary') -> dict[str, tuple[bool, str]]:
     """Check local availability; remote probes require explicit selection."""
     cli = cli_path()
     if cli is None:
         return {LOCAL: (False, "the image CLI was not found"),
                 REMOTE: (False, "the image CLI was not found")}
     results = {}
-    probes = [(LOCAL, [cli, "doctor"])]
+    probes = [(LOCAL, [cli, "doctor", "--variant", variant])]
     if REMOTE_SUBCOMMAND and include_remote:
         probes.append((REMOTE, [cli, REMOTE_SUBCOMMAND, "doctor"]))
     else:
@@ -97,6 +88,7 @@ class Request:
     steps: int | None = None
     input_image: str | None = None
     backend: str = LOCAL
+    variant: str = 'ternary'
 
     @property
     def size(self) -> str:
@@ -106,6 +98,8 @@ class Request:
         """Return a human-readable problem, or None when it is runnable."""
         if not self.prompt.strip():
             return "a prompt is required"
+        if self.variant not in ('ternary', 'binary'):
+            return "variant must be ternary or binary"
         for name, value in (("width", self.width), ("height", self.height)):
             if value % SIZE_STEP:
                 return f"{name} must be a multiple of {SIZE_STEP}"
@@ -123,6 +117,8 @@ class Request:
         argv += [REMOTE_SUBCOMMAND, "generate", "--wait"] \
             if self.backend == REMOTE and REMOTE_SUBCOMMAND else ["generate"]
         argv += ["-p", self.prompt, "--size", self.size, "--output", output]
+        if self.backend == LOCAL:
+            argv += ["--variant", self.variant]
         if self.seed is not None:
             argv += ["--seed", str(self.seed)]
         if self.steps is not None:
@@ -172,6 +168,7 @@ class Gallery:
                     "steps": result.request.steps,
                     "input_image": result.request.input_image,
                     "backend": result.request.backend,
+                    "variant": result.request.variant,
                     "seconds": round(result.seconds, 1),
                 }, handle, indent=2)
         except OSError:
@@ -213,7 +210,8 @@ class Gallery:
                     width=width, height=height,
                     seed=saved.get("seed"), steps=saved.get("steps"),
                     input_image=saved.get("input_image"),
-                    backend=saved.get("backend", LOCAL)),
+                    backend=saved.get("backend", LOCAL),
+                    variant=saved.get("variant", 'ternary')),
                 path=path, ok=True, detail="from a previous session",
                 seconds=seconds))
 

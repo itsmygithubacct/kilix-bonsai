@@ -1,16 +1,15 @@
 {
   "id": "bonsai-image-4b",
   "title": "Bonsai Image 4B",
-  "summary": "Ternary (1.58-bit) and binary (1-bit) diffusion image models. Ternary is the default: much better output for a modest size increase.",
+  "summary": "Ternary and binary diffusion image models; use the wizard sizing recommendation.",
   "task": "image",
   "parameters": "4B",
   "quantization": "int2 ternary / int1 binary transformer, HQQ 4-bit text encoder",
   "license": "see LICENSE in the weight set",
   "upstream": "https://huggingface.co/collections/prism-ml/bonsai-image",
   "store": {
-    "env": "KILIX_BONSAI_BONSAI_IMAGE_4B_DIR",
-    "default": "$GPU_TERMINAL_HOME/bonsai_image_generation",
-    "shared_with": "the bonsai_image_generation scaffold's BONSAI_MODELS_DIR"
+    "default": "$KILIX_CONTENT_ROOT/assets",
+    "shared_with": "the receipt-backed Kilix Content model store"
   },
   "deps": {
     "apt": [
@@ -19,7 +18,7 @@
       "python3-venv"
     ],
     "pip": [],
-    "note": "install-deps.sh installs the pinned local CUDA runtime in an isolated Python 3.11 environment using uv. Weights are downloaded separately. Remote execution is opt-in."
+    "note": "Frozen CUDA runtime with managed Python 3.12.8 and uv 0.12.5. Use kilix wizard to accept terms and install model weights."
   },
   "runtime": {
     "kind": "image",
@@ -34,7 +33,7 @@
       "id": "ternary-gemlite",
       "title": "Ternary 1.58-bit (gemlite)",
       "default": true,
-      "subdir": "bonsai-image-4B-ternary-gemlite",
+      "subdir": "bonsai-image-4b-ternary-gemlite",
       "sources": [
         {
           "repo": "prism-ml/bonsai-image-ternary-4B-gemlite-2bit",
@@ -43,32 +42,32 @@
             {
               "path": "LICENSE",
               "size": 10174,
-              "sha256": null
+              "sha256": "69849221bfb90053de2134ef5e6d540287b4b98062326492f1f96f5da685524b"
             },
             {
               "path": "NOTICE.md",
               "size": 623,
-              "sha256": null
+              "sha256": "bbefa4a26b836efc040c1a0f155a425d1d833eae1b2534ffc414b1eada3cd922"
             },
             {
               "path": "README.md",
               "size": 13033,
-              "sha256": null
+              "sha256": "742dbbcc4ecb979e11f8377bdadfb312a2b1437c5b4950d7a3fb155f71c82f20"
             },
             {
               "path": "manifest.json",
               "size": 3498,
-              "sha256": null
+              "sha256": "c47197cb03d028b40b876943eefd2dd0ff438674b29b323264b0ee1404dc6134"
             },
             {
               "path": "model_index.json",
               "size": 81,
-              "sha256": null
+              "sha256": "ecb4735e37691a8733f62957fd6c548f841af40624905bb24fa639756153c8a1"
             },
             {
               "path": "text_encoder-hqq-4bit/config.json",
               "size": 1535,
-              "sha256": null
+              "sha256": "979b4d6b42dfae3c6dece91da5fe139926dee4a1a244a1cf129d2025c2a60064"
             },
             {
               "path": "text_encoder-hqq-4bit/qmodel.pt",
@@ -78,22 +77,22 @@
             {
               "path": "text_encoder-hqq-4bit/tokenizer/added_tokens.json",
               "size": 707,
-              "sha256": null
+              "sha256": "c0284b582e14987fbd3d5a2cb2bd139084371ed9acbae488829a1c900833c680"
             },
             {
               "path": "text_encoder-hqq-4bit/tokenizer/chat_template.jinja",
               "size": 4168,
-              "sha256": null
+              "sha256": "a55ee1b1660128b7098723e0abcd92caa0788061051c62d51cbe87d9cf1974d8"
             },
             {
               "path": "text_encoder-hqq-4bit/tokenizer/merges.txt",
               "size": 1671853,
-              "sha256": null
+              "sha256": "8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5"
             },
             {
               "path": "text_encoder-hqq-4bit/tokenizer/special_tokens_map.json",
               "size": 613,
-              "sha256": null
+              "sha256": "76862e765266b85aa9459767e33cbaf13970f327a0e88d1c65846c2ddd3a1ecd"
             },
             {
               "path": "text_encoder-hqq-4bit/tokenizer/tokenizer.json",
@@ -103,27 +102,27 @@
             {
               "path": "text_encoder-hqq-4bit/tokenizer/tokenizer_config.json",
               "size": 5404,
-              "sha256": null
+              "sha256": "443bfa629eb16387a12edbf92a76f6a6f10b2af3b53d87ba1550adfcf45f7fa0"
             },
             {
               "path": "text_encoder-hqq-4bit/tokenizer/vocab.json",
               "size": 2776833,
-              "sha256": null
+              "sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910"
             },
             {
               "path": "transformer-gemlite-int2/config.json",
               "size": 620,
-              "sha256": null
+              "sha256": "f4c11e406efb84b36ada1a4287423d4aff2092d74bf15774455f88a7e4888a02"
             },
             {
               "path": "transformer-gemlite-int2/gemlite_autotune.json",
               "size": 470215,
-              "sha256": null
+              "sha256": "6847ecb93765973c0f4c28baee6f265dc66405be3401d1fd5b28496c0aeb0037"
             },
             {
               "path": "transformer-gemlite-int2/quantization_config.json",
               "size": 6042,
-              "sha256": null
+              "sha256": "889c48a7f55a1630ec97ea5e050fd81df32c8a4a31c44434377a44f449a471fa"
             },
             {
               "path": "transformer-gemlite-int2/state_dict.pt",
@@ -133,7 +132,7 @@
             {
               "path": "vae/config.json",
               "size": 864,
-              "sha256": null
+              "sha256": "a1cb2ba54a569913eca375d9ee3afe683ba680bd9f64a49d86ec2bd14f304409"
             },
             {
               "path": "vae/diffusion_pytorch_model.safetensors",
@@ -149,7 +148,7 @@
       "id": "binary-gemlite",
       "title": "Binary 1-bit (gemlite)",
       "default": false,
-      "subdir": "bonsai-image-4B-binary-gemlite",
+      "subdir": "bonsai-image-4b-binary-gemlite",
       "sources": [
         {
           "repo": "prism-ml/bonsai-image-binary-4B-gemlite-1bit",
@@ -158,32 +157,32 @@
             {
               "path": "LICENSE",
               "size": 10174,
-              "sha256": null
+              "sha256": "69849221bfb90053de2134ef5e6d540287b4b98062326492f1f96f5da685524b"
             },
             {
               "path": "NOTICE.md",
               "size": 623,
-              "sha256": null
+              "sha256": "bbefa4a26b836efc040c1a0f155a425d1d833eae1b2534ffc414b1eada3cd922"
             },
             {
               "path": "README.md",
               "size": 12848,
-              "sha256": null
+              "sha256": "67bfdf7a92d94e0ee759a54aa472d61a9d6aff79e262a2508d68f5a66056d961"
             },
             {
               "path": "manifest.json",
               "size": 3497,
-              "sha256": null
+              "sha256": "bc1db84e10361801ecc12ba92901b55214676be281a934dd89793b226c6061e9"
             },
             {
               "path": "model_index.json",
               "size": 81,
-              "sha256": null
+              "sha256": "ecb4735e37691a8733f62957fd6c548f841af40624905bb24fa639756153c8a1"
             },
             {
               "path": "text_encoder-hqq-4bit/config.json",
               "size": 1535,
-              "sha256": null
+              "sha256": "979b4d6b42dfae3c6dece91da5fe139926dee4a1a244a1cf129d2025c2a60064"
             },
             {
               "path": "text_encoder-hqq-4bit/qmodel.pt",
@@ -193,22 +192,22 @@
             {
               "path": "text_encoder-hqq-4bit/tokenizer/added_tokens.json",
               "size": 707,
-              "sha256": null
+              "sha256": "c0284b582e14987fbd3d5a2cb2bd139084371ed9acbae488829a1c900833c680"
             },
             {
               "path": "text_encoder-hqq-4bit/tokenizer/chat_template.jinja",
               "size": 4168,
-              "sha256": null
+              "sha256": "a55ee1b1660128b7098723e0abcd92caa0788061051c62d51cbe87d9cf1974d8"
             },
             {
               "path": "text_encoder-hqq-4bit/tokenizer/merges.txt",
               "size": 1671853,
-              "sha256": null
+              "sha256": "8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5"
             },
             {
               "path": "text_encoder-hqq-4bit/tokenizer/special_tokens_map.json",
               "size": 613,
-              "sha256": null
+              "sha256": "76862e765266b85aa9459767e33cbaf13970f327a0e88d1c65846c2ddd3a1ecd"
             },
             {
               "path": "text_encoder-hqq-4bit/tokenizer/tokenizer.json",
@@ -218,27 +217,27 @@
             {
               "path": "text_encoder-hqq-4bit/tokenizer/tokenizer_config.json",
               "size": 5404,
-              "sha256": null
+              "sha256": "443bfa629eb16387a12edbf92a76f6a6f10b2af3b53d87ba1550adfcf45f7fa0"
             },
             {
               "path": "text_encoder-hqq-4bit/tokenizer/vocab.json",
               "size": 2776833,
-              "sha256": null
+              "sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910"
             },
             {
               "path": "transformer-gemlite-int1/config.json",
               "size": 620,
-              "sha256": null
+              "sha256": "f4c11e406efb84b36ada1a4287423d4aff2092d74bf15774455f88a7e4888a02"
             },
             {
               "path": "transformer-gemlite-int1/gemlite_autotune.json",
               "size": 470216,
-              "sha256": null
+              "sha256": "a70e0f3fd1eeaf6836a8be431ee27ae143543cb28349a0298b135e713600288d"
             },
             {
               "path": "transformer-gemlite-int1/quantization_config.json",
               "size": 6010,
-              "sha256": null
+              "sha256": "8e0bd42f7fdf4af5b513da3c69681a37d881945c644f34b4543788cfa9f6c4f4"
             },
             {
               "path": "transformer-gemlite-int1/state_dict.pt",
@@ -248,7 +247,7 @@
             {
               "path": "vae/config.json",
               "size": 864,
-              "sha256": null
+              "sha256": "a1cb2ba54a569913eca375d9ee3afe683ba680bd9f64a49d86ec2bd14f304409"
             },
             {
               "path": "vae/diffusion_pytorch_model.safetensors",

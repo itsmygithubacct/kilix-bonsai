@@ -150,6 +150,25 @@ class InterfaceRenderTest(unittest.TestCase):
         state.show_help = True
         self._exercise(module, state, [])
 
+    def test_reusing_binary_settings_clears_ternary_readiness_and_reprobes(self):
+        module = load_tool('kilix-bonsai-image')
+        state = module.State(catalog.find('bonsai-image-4b'))
+        state.request.variant = 'ternary'
+        state.backends = {image.LOCAL: (True, 'ready ternary')}
+        state.gallery.entries = [image.Result(image.Request(prompt='tree',variant='binary'),
+                                              'private-image.png',True,'ok',1)]
+        state.selected = 0
+        pending = []
+        with patch.object(module.threading,'Thread',side_effect=lambda **kw:
+                          type('Deferred',(),{'start':lambda self:pending.append(kw['target'])})()), \
+             patch.object(image,'probe_backends',return_value={image.LOCAL:(False,'binary missing')}) as probe:
+            state.reuse()
+            self.assertEqual(state.request.variant,'binary')
+            self.assertFalse(state.ready)
+            pending.pop()()
+            self.assertFalse(state.ready)
+            probe.assert_called_once_with(include_remote=False,variant='binary')
+
     def test_image_error_includes_the_retry_instruction(self) -> None:
         module = load_tool("kilix-bonsai-image")
         state = module.State(catalog.find("bonsai-image-4b"))

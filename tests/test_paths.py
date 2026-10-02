@@ -65,10 +65,10 @@ class SharedStoreTest(EnvironmentTest):
             catalog.find("vibevoice-asr-bitnet").store,
             "/tmp/elsewhere/voice/models/vibevoice-asr-bitnet")
 
-    def test_image_weights_land_in_the_image_scaffold_directory(self) -> None:
+    def test_image_weights_land_in_the_host_content_directory(self) -> None:
         os.environ["GPU_TERMINAL_HOME"] = "/tmp/gt"
         model = catalog.find("bonsai-image-4b")
-        self.assertEqual(model.store, "/tmp/gt/bonsai_image_generation")
+        self.assertEqual(model.store, "/tmp/gt/kilix/data/desktop-apps/assets")
 
     def test_image_variant_subdirectories_are_the_ones_upstream_looks_for(self):
         os.environ["GPU_TERMINAL_HOME"] = "/tmp/gt"
@@ -76,10 +76,10 @@ class SharedStoreTest(EnvironmentTest):
         directories = {v.id: v.directory(model.store) for v in model.variants}
         self.assertEqual(
             directories["ternary-gemlite"],
-            "/tmp/gt/bonsai_image_generation/bonsai-image-4B-ternary-gemlite")
+            "/tmp/gt/kilix/data/desktop-apps/assets/bonsai-image-4b-ternary-gemlite")
         self.assertEqual(
             directories["binary-gemlite"],
-            "/tmp/gt/bonsai_image_generation/bonsai-image-4B-binary-gemlite")
+            "/tmp/gt/kilix/data/desktop-apps/assets/bonsai-image-4b-binary-gemlite")
 
 
 class OwnStoreTest(EnvironmentTest):

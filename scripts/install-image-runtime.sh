@@ -1,36 +1,31 @@
 #!/usr/bin/env bash
-# Install the local image runtime separately from model weights.
+# Install the complete frozen image dependency graph; never acquire models.
 set -euo pipefail
+umask 077
 repo="$(cd -- "$(dirname -- "$0")/.." && pwd)"
-case "${1:-}" in -h|--help) echo "usage: install-deps.sh [--check]"; exit 0 ;; esac
+case "${1:-}" in -h|--help) echo "usage: install-deps.sh [--check|--offline]"; exit 0 ;; esac
 if [ "${1:-}" = --check ]; then
   exec "$repo/tools/bonsai-image/main.py" doctor
 fi
-[ "$#" = 0 ] || { echo 'usage: install-deps.sh [--check]' >&2; exit 2; }
+offline=()
+if [ "${1:-}" = --offline ]; then offline=(--offline); shift; fi
+[ "$#" = 0 ] || { echo 'usage: install-deps.sh [--check|--offline]' >&2; exit 2; }
 [ "$(id -u)" != 0 ] || { echo 'Run as the desktop user, not root.' >&2; exit 1; }
-command -v uv >/dev/null || { echo 'Install uv, then run this script again (Python 3.11 is managed by uv).' >&2; exit 1; }
-command -v git >/dev/null || { echo 'Install git, then run this script again.' >&2; exit 1; }
-mapfile -t locations < <(PYTHONPATH="$repo/src" python3 - <<'PY'
-from kilix_bonsai.paths import runtime_dir, venv_dir
-print(runtime_dir())
-print(venv_dir('bonsai-image-4b'))
-PY
-)
-runtime="${locations[0]}/image-studio"
-venv="${locations[1]}"
-revision=31b02171634c16b5da0eec6aea075e7489d5fb39
-if [ ! -d "$runtime/.git" ]; then
-  [ ! -e "$runtime" ] || { echo "Refusing to replace $runtime" >&2; exit 1; }
-  mkdir -p -- "$(dirname -- "$runtime")"
-  git clone https://github.com/PrismML-Eng/image-studio.git "$runtime"
+command -v uv >/dev/null || { echo 'Install uv 0.12.5, then run this script again.' >&2; exit 1; }
+command -v git >/dev/null || { echo 'git is required.' >&2; exit 1; }
+[[ "$(uv --version)" =~ ^uv\ 0\.12\.5($|[[:space:]]) ]] || { echo 'This runtime requires uv 0.12.5.' >&2; exit 1; }
+if [ "${#offline[@]}" != 0 ]; then
+  selected="$(git -C "$repo" ls-tree HEAD third_party/kilix-content | awk '{print $3}')"
+  actual="$(git -C "$repo/third_party/kilix-content" rev-parse HEAD 2>/dev/null || true)"
+  if [ -z "$selected" ] || [ "$actual" != "$selected" ]; then
+    echo 'Offline pinned Content source is unavailable.' >&2; exit 1
+  fi
+else
+  git -C "$repo" submodule update --init third_party/kilix-content
 fi
-[ -z "$(git -C "$runtime" status --porcelain)" ] || { echo 'Runtime checkout has local changes.' >&2; exit 1; }
-git -C "$runtime" fetch origin "$revision"
-git -C "$runtime" checkout --detach "$revision"
-[ -x "$venv/bin/python" ] || uv venv --python 3.11 "$venv"
-uv pip install --python "$venv/bin/python" 'torch==2.6.0' --index-url https://download.pytorch.org/whl/cu124
-uv pip install --python "$venv/bin/python" \
-  'torch==2.6.0' 'triton==3.2.0' 'gemlite==0.4.7' 'hqq==0.2.8.post1' \
-  'diffusers==0.38.0' 'transformers==5.8.1' 'accelerate==1.13.0' \
-  'setuptools==80.10.2' 'pillow>=10.4' "$runtime/backend_gpu"
-echo 'Local image dependencies installed. Download the ternary weights in Bonsai if needed.'
+python3 -I -B "$repo/third_party/kilix-content/tools/vendored_kilix_license.py" --check
+venv="$(PYTHONPATH="$repo/src" python3 -B -c 'from kilix_bonsai.paths import venv_dir; print(venv_dir("bonsai-image-4b"))')"
+UV_PROJECT_ENVIRONMENT="$venv" uv sync --directory "$repo/runtime/image" \
+  --frozen --no-config --no-dev --no-editable --no-install-project \
+  --python 3.12.8 --managed-python "${offline[@]}"
+echo 'Frozen local image dependencies installed. Models require kilix wizard.'

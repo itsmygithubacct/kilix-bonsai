@@ -1,54 +1,57 @@
 # Bonsai Image 4B
 
-A 4B diffusion image model in two quantizations: ternary (1.58-bit) at 4.55 GB
-and binary (1-bit) at 4.09 GB. Ternary is the default — the quality difference
-is much larger than the half-gigabyte.
+Local text-to-image with ternary and binary Gemlite transformers, a shared HQQ
+4-bit text encoder, and the Flux2 VAE. Both variants are offered by the Kilix
+model wizard. The sizing recommendation depends on available RAM and GPU memory.
 
-Both share the same HQQ 4-bit text encoder and the same VAE; only the
-transformer differs, which is why the two variants are nearly the same size
-despite one being 2-bit and the other 1-bit.
-
-## Get it
+## Setup
 
 ```sh
-./install-deps.sh
-./pull.sh                                  # ternary, 4.55 GB
-./pull.sh --variant binary-gemlite         # binary,  4.09 GB
-kilix-bonsai verify bonsai-image-4b
+kilix wizard                              # choices first, grouped terms last
+kilix bonsai deps bonsai-image-4b          # install the frozen runtime separately
+kilix-bonsai-image bonsai-image-4b         # open the image composer
 ```
 
-Or from the TUI: `kilix bonsai`, select Bonsai Image 4B, Enter.
+Model acquisition uses the selected Kilix Content catalog and current Licence
+receipts. `kilix bonsai pull bonsai-image-4b --variant binary-gemlite` uses the
+same receipt-backed installer; `--from DIR` imports catalog-matching supplied
+files after consent. No model files are acquired by the dependency installer.
 
-## Where it lands
+Models live in `$KILIX_CONTENT_ROOT/assets/bonsai-image-4b-{ternary,binary}-gemlite`.
+Through `kilix bonsai`, that root is bound to the host's actual installation
+root. Standalone tools default to `$KILIX_DATA_HOME/desktop-apps`. Legacy image
+scaffold directories do not satisfy runtime admission; import them with
+`kilix models install MODEL --from DIR` after reviewing the current terms.
 
-**Not** under this repository's own model root. These weights go to
-`$GPU_TERMINAL_HOME/bonsai_image_generation`, the data directory the image
-generation scaffold already uses as `BONSAI_MODELS_DIR`, in the subdirectories
-it already looks for (`bonsai-image-4B-ternary-gemlite`,
-`bonsai-image-4B-binary-gemlite`).
+## Runtime
 
-That is the whole point of the shared path: a machine that has already set up
-image generation shows these as **ready** here with nothing to download, and a
-machine that downloads them here can generate images without a second copy.
-Override with `KILIX_BONSAI_BONSAI_IMAGE_4B_DIR` if the weights live elsewhere.
+`install-deps.sh` requires uv 0.12.5 and git. It installs managed Python 3.12.8
+and the complete frozen CUDA dependency graph, including the exact Prism GPU
+backend source revision. `scripts/install-image-runtime.sh --offline` requires
+that pinned Content sources, Python, and dependencies are already cached; it
+never fetches Git sources. `--check` runs the guarded default ternary doctor.
 
-## Running it
+The bundled runtime requires an NVIDIA GPU with compute capability 7.0 or newer.
+It checks current receipts and every catalog member before creating sealed
+read-only model copies. Inference uses those copies with model network access
+turned off. Missing, changed, extra, or unowned files refuse startup.
 
-Run `./install-deps.sh` to install the pinned local CUDA pipeline in an
-isolated Python 3.11 environment. This requires `uv` and `git`; it does not
-download model weights. `./install-deps.sh --check` reports missing dependencies,
-weights, or CUDA support. Existing ternary weights are reused in place.
+Select `ternary` or `binary` in the composer's variant field. When only binary
+is installed, the composer selects it initially. The CLI also offers
+`tools/bonsai-image/main.py doctor --variant binary` and
+`generate --variant binary -p TEXT --output FILE.png`.
 
-Local is the default and an unavailable local backend never selects remote.
-Remote requires an explicit backend selection and a configured external CLI
-(`KILIX_BONSAI_IMAGE_CLI` and `KILIX_BONSAI_IMAGE_REMOTE`).
+Start with the 512x512, four-step preview. On cards below 8 GiB, the VAE loads
+on CPU in float32 to avoid a temporary GPU allocation peak. Larger cards use
+the upstream GPU VAE path. The measured sizing profiles cover only the CPU VAE
+512x512 path on GPU 0; other modes and larger images remain unmeasured. Available
+memory from other applications can prevent a recommendation even when a card's
+nominal capacity is sufficient. Resource estimates are not release qualification.
 
-The bundled runtime uses the ternary model and supports text-to-image.
-Reference images require an external runtime with that capability. Start with
-the 512x512 fast preset; larger images require more GPU memory. When other GPU
-jobs leave too little memory, generation reports why and can be retried later.
+Local execution is the default. Remote execution requires explicit selection
+and a configured external CLI (`KILIX_BONSAI_IMAGE_CLI` and
+`KILIX_BONSAI_IMAGE_REMOTE`). Reference images require an external runtime with
+that capability; the bundled pipeline supports text-to-image.
 
-Upstream: <https://huggingface.co/collections/prism-ml/bonsai-image>
-
-MLX conversions of both variants exist upstream for Apple Silicon and are not
-carried here.
+Upstream: <https://huggingface.co/collections/prism-ml/bonsai-image>.
+Apple Silicon MLX conversions are not carried here.

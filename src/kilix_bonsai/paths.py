@@ -18,7 +18,7 @@ import os
 # The store roots a MODEL.json may name. A model that wants somewhere else has
 # to add it here, which is the point: the set of places this repo writes
 # multi-gigabyte files should be short enough to read.
-_VARIABLES = ("KILIX_BONSAI_MODELS_DIR", "GPU_TERMINAL_HOME",
+_VARIABLES = ("KILIX_CONTENT_ROOT", "KILIX_BONSAI_MODELS_DIR", "GPU_TERMINAL_HOME",
               "KILIX_STORAGE_HOME", "KILIX_DATA_HOME")
 
 
@@ -95,6 +95,8 @@ def voice_model_dir(catalog_id: str) -> str:
 def variables() -> dict[str, str]:
     """Return the store roots a MODEL.json may reference, resolved."""
     return {
+        "KILIX_CONTENT_ROOT": _expand(os.environ.get("KILIX_CONTENT_ROOT")
+                                      or os.path.join(data_home(), "desktop-apps")),
         "KILIX_BONSAI_MODELS_DIR": models_dir(),
         "GPU_TERMINAL_HOME": gpu_terminal_home(),
         "KILIX_STORAGE_HOME": storage_home(),

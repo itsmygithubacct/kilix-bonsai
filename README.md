@@ -63,13 +63,16 @@ Three of the five stores are this repository's own. Two are not, on purpose:
   speech models by catalog id, and `vibevoice-asr-bitnet` resolves to the exact
   directory this repository writes to. Downloading it here is what makes it
   available to dictation; having it for dictation makes it **ready** here.
-- **Bonsai Image 4B lands in the image scaffold's data directory**, in the
-  subdirectory names that scaffold already looks for.
+- **Bonsai Image 4B uses the receipt-backed Kilix Content store** shared with
+  `kilix wizard`. The image pull command uses that installer, and the guarded
+  runtime verifies its exact catalog population and current licence coverage.
 
-In both cases the alternative — a private copy per component — would mean
-carrying between 1.6 and 4.5 GB twice for no benefit. The paths are derived
-from the same environment variables the owning components use, and the tests
-assert that rather than trusting a comment to stay true.
+The shared paths avoid a separate model copy per component. Image runtime
+dependencies are installed separately with `kilix bonsai deps bonsai-image-4b`.
+The image composer offers a ternary/binary variant field and uses the variant
+selected in the wizard when only that variant is installed. See the
+[Bonsai Image guide](models/bonsai-image-4b/README.md) for the frozen runtime,
+legacy model import, and measured preview limits.
 
 ## Commands
 
