@@ -20,6 +20,7 @@ from kilix_bonsai.runtime import chat  # noqa: E402
 COMMANDS = (
     "kilix-bonsai",
     "kilix-bonsai-chat",
+    "kilix-bonsai-chat-gui",
     "kilix-bonsai-image",
     "kilix-bonsai-speech",
     "bonsai-cpu",
@@ -42,7 +43,7 @@ class InstallTest(unittest.TestCase):
                 timeout=30,
             )
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn("installed 5 commands", result.stdout)
+            self.assertIn("installed 6 commands", result.stdout)
 
             for command in COMMANDS:
                 launcher = prefix / "bin" / command
@@ -56,6 +57,19 @@ class InstallTest(unittest.TestCase):
                 str(ROOT / "bonsai-cpu" / "bin" / "bonsai-cpu"),
                 cpu_launcher,
             )
+            gui_launcher = (
+                prefix / "bin" / "kilix-bonsai-chat-gui"
+            ).read_text(encoding="utf-8")
+            self.assertIn(
+                str(ROOT / "tools" / "kilix-bonsai-chat-gui" / "main.py"),
+                gui_launcher,
+            )
+            self.assertIn("exec python3 ", gui_launcher)
+            chat_launcher = (
+                prefix / "bin" / "kilix-bonsai-chat"
+            ).read_text(encoding="utf-8")
+            self.assertIn("tools/kilix-bonsai-chat/main.py", chat_launcher)
+            self.assertNotIn("kilix-bonsai-chat-gui", chat_launcher)
 
             help_result = subprocess.run(
                 [str(prefix / "bin" / "bonsai-cpu"), "--help"],
@@ -87,7 +101,7 @@ class InstallTest(unittest.TestCase):
                 capture_output=True, text=True, env=environment, timeout=30,
             )
             self.assertEqual(uninstall.returncode, 0, uninstall.stderr)
-            self.assertIn("removed 5 launchers", uninstall.stdout)
+            self.assertIn("removed 6 launchers", uninstall.stdout)
             for command in COMMANDS:
                 self.assertFalse((prefix / "bin" / command).exists(), command)
             self.assertEqual(

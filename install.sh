@@ -11,7 +11,7 @@ set -euo pipefail
 HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PREFIX="${KILIX_BONSAI_PREFIX:-$HOME/.local}"
 BIN="$PREFIX/bin"
-TOOLS="kilix-bonsai kilix-bonsai-chat kilix-bonsai-image kilix-bonsai-speech"
+TOOLS="kilix-bonsai kilix-bonsai-chat kilix-bonsai-chat-gui kilix-bonsai-image kilix-bonsai-speech"
 
 die() { printf 'kilix-bonsai: %s\n' "$1" >&2; exit 1; }
 shell_quote() {
@@ -98,9 +98,9 @@ fi
 
 mkdir -p -- "$BIN" || die "could not create $BIN"
 
-# The store and the three interfaces it launches. Each is a separate command
-# so it can be run directly, put in a desktop menu, or resolved by the
-# launcher.
+# The store, the interfaces it launches, and the desktop chat window. Each
+# is a separate command so it can be run directly, put in a desktop menu, or
+# resolved by the launcher.
 installed=0
 for command_name in $TOOLS; do
     target="$HERE/tools/$command_name/main.py"
