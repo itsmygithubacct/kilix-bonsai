@@ -5,6 +5,15 @@ self-describing, each with its own dependency and download scripts, one
 terminal UI over all of them, and the bundled `bonsai-cpu` runtime for direct
 CPU inference.
 
+**Status:** ships with Kilix in Plebian-OS 0.2.3 as an install-on-first-use
+component. Kilix pins this repository by commit in
+`scripts/install-kilix-bonsai.sh`; the first `kilix bonsai` run installs it,
+and the Kilix content catalog's **Model Store** entry (`kilix-model-store`, a
+system entry) opens the same command. Model weights are never installed until
+you pull them.
+
+## What it does
+
 ```sh
 kilix bonsai                       # the launcher, the store, and the interfaces
 ```
@@ -21,7 +30,7 @@ status row, application content, and a footer. `--graphics` explicitly selects
 the optional Tango pixel desktop and reports a clean error when the terminal
 cannot provide it. `--screenshot` always captures the text rendering.
 
-## Interfaces and CPU runtime
+### Interfaces and CPU runtime
 
 | Command | For | What it does |
 |---|---|---|
@@ -40,7 +49,7 @@ Which interface a model gets is declared by that model's `MODEL.json`
 (`runtime.kind`), not decided here — so a new model arrives with its own
 answer rather than needing the launcher changed.
 
-## The models
+### The models
 
 | Model | Task | Quantization | Download |
 |---|---|---|---|
@@ -55,26 +64,35 @@ Several have larger optional variants — a vision projector for 27B, the binary
 image weights, the unquantized sources for re-conversion — listed there and
 selectable in the UI.
 
-## Two models are shared, not owned
+Two of the stores are shared with other components: the VibeVoice store is
+the one Kilix Voice dictation reads, and Bonsai Image 4B lives in the
+receipt-backed Kilix Content store. See
+[docs/models-and-downloads.md](docs/models-and-downloads.md).
 
-Three of the five stores are this repository's own. Two are not, on purpose:
+## Quick start
 
-- **VibeVoice ASR BitNet is the dictation model.** `kilix-voice` resolves
-  speech models by catalog id, and `vibevoice-asr-bitnet` resolves to the exact
-  directory this repository writes to. Downloading it here is what makes it
-  available to dictation; having it for dictation makes it **ready** here.
-- **Bonsai Image 4B uses the receipt-backed Kilix Content store** shared with
-  `kilix wizard`. The image pull command uses that installer, and the guarded
-  runtime verifies its exact catalog population and current licence coverage.
+### Install
 
-The shared paths avoid a separate model copy per component. Image runtime
-dependencies are installed separately with `kilix bonsai deps bonsai-image-4b`.
-The image composer offers a ternary/binary variant field and uses the variant
-selected in the wizard when only that variant is installed. See the
-[Bonsai Image guide](models/bonsai-image-4b/README.md) for the frozen runtime,
-legacy model import, and measured preview limits.
+```sh
+./install.sh                       # all five commands into ~/.local/bin
+KILIX_BONSAI_PREFIX=/usr/local ./install.sh
+./install.sh --uninstall           # remove this checkout's unchanged launchers
+```
 
-## Commands
+The commands are launchers that run the tools from this checkout, including
+`bonsai-cpu/bin/bonsai-cpu`, so updating is a `git pull` rather than a
+reinstall. Uninstall removes only launchers whose contents still exactly match
+what this checkout generated; a locally edited or replaced command is retained
+and reported instead of being deleted.
+
+On a Kilix desktop, `kilix bonsai` installs the pinned commit on first use
+and accepts every subcommand below (`kilix bonsai list`, `kilix bonsai pull
+MODEL`, ...). It is also in the Kilix 95 Start menu under Programs ▸ **BitNet
+Models**.
+
+## Usage
+
+### Commands
 
 Everything the UI does is also a subcommand, because provisioning a machine, a
 Makefile, and an SSH session all want the non-interactive path:
@@ -93,117 +111,29 @@ kilix-bonsai verify MODEL [--variant V]
 kilix-bonsai path MODEL [--variant V]
 ```
 
-## Configuration
+## How it works
 
-Machine facts are environment variables rather than constants, because this
-repository is published and a hostname or a home directory baked into it would
-ship with it.
-
-| Variable | For |
-|---|---|
-| `KILIX_BONSAI_CHAT_REMOTE` | Host to borrow a GPU from when this one has none |
-| `KILIX_BONSAI_CHAT_LAUNCHER_DIR` | Directory holding the vendor launchers on that host |
-| `KILIX_BONSAI_NOTARY_HOME` | Vendor runtime's state root (regular 8B) |
-| `KILIX_BONSAI_PRISM_BIN` | Pinned vendor binary directory (regular 8B) |
-| `KILIX_BONSAI_8B_GGUF` | Path to the 8B weights on the running host |
-| `BONSAI_CPU_PREFIX` | Bundled CPU tool's install prefix when it is not on PATH (default `~/.local`) |
-| `KILIX_BONSAI_IMAGE_REMOTE` | Image scaffold's remote subcommand |
-| `KILIX_TUI_UTILS_HOME` | Where to find the shared pixel renderer, if not alongside |
-
-Only the first two are needed for 27B; 8B needs the middle three as well,
-because it has no wrapper of its own and the shared CLI has to be invoked
-directly. Each is reported by name when it is missing, so nothing has to be
-guessed from a stack trace.
-
-## Runtimes
-
-Nothing here reimplements inference. On a GPU, chat drives the pinned vendor
-launchers, one process per turn. On CPU it delegates to the bundled
-`bonsai-cpu/` component, whose pinned upstream `llama-server` remains resident
-behind the full chat TUI.
-Speech drives VibeASR's `asr_infer`. Images default to the bundled local CUDA
-CLI; install its isolated dependencies with
-`models/bonsai-image-4b/install-deps.sh`. Remote execution requires explicit
-selection and an external CLI. Missing local dependencies are reported in the pane.
-
-Three findings worth recording, all discovered by running the things rather than
-reading about them:
-
-- **`asr_stream_server` is unusable in the build available here.** It aborts
-  inside `vae_encode_impl` on every clip, including ones `asr_infer`
-  transcribes without complaint. The resident-server design would be better;
-  paying a model load per utterance is the cost of using the binary that works.
-- **The first stock llama.cpp tested here could not load the Bonsai GGUFs.**
-  `Q1_0` was not a ggml tensor type at that revision, so the original working
-  path used the vendor engine; a separate deterministic integer engine can
-  still import the GGUF and produce byte-identical receipts. Upstream
-  llama.cpp learned `Q1_0` in April 2026, and `bonsai-cpu/` now pins and owns
-  that direct CPU path. The BitNet `I2_S` checkpoint is a separate case again
-  and wants `bitnet.cpp`. The standalone `scripts/build-runtime.sh` is
-  therefore a reference build, not a chat backend selected automatically.
-- **The image model cannot run on every host that can hold it.** Compute
-  capability 7.0 is required and older cards fail at the first kernel launch,
-  well after a long model load — so the backend is chosen from what `doctor`
-  reports, and a remote is a first-class option rather than a fallback.
-
-Chat probes in that order too: a local card, then a remote one, then **CPU**.
-The CPU choice is a delegation, not another per-turn backend in this TUI:
-curses exits and `bonsai-cpu chat` takes over with its resident server, saved
-conversations, model picker, and reasoning controls. 8B stays the default;
-27B is available when explicitly requested, with its minutes-per-response cost
-stated rather than hidden. BitNet 2B4T is refused instead of substituted:
-its declared engine is `bitnet.cpp`, and no chat adapter here drives it yet.
-
-`kilix` reaches the same surface: `kilix bonsai`, `kilix bonsai list`,
-`kilix bonsai pull …`, and so on. It is also in the Kilix 95 Start menu under
-Programs ▸ **BitNet Models**.
-
-## A model is a folder
+Each model is a folder under `models/` whose `MODEL.json` records the
+upstream repository and commit, every file with its size and sha256, where
+the weights belong and which interface runs them (`runtime.kind`). The
+launcher, the CLI and the shared `models/_shared/pull.sh` and
+`install-deps.sh` scripts all read that file, so adding a model is adding a
+folder. Downloads are resumable, verified, atomic per file and idempotent.
 
 ```
-models/bonsai-27b/
-├── MODEL.json          what the model is: upstream repo, pinned commit,
-│                       every file with its size and sha256, where the
-│                       weights belong, what the runtime needs
-├── README.md           what runs it, and what it costs
-├── install-deps.sh     dependencies
-└── pull.sh             the download
+kilix-bonsai (launcher, store, CLI)
+   |-- reads models/<id>/MODEL.json
+   |-- pull.sh / install-deps.sh  (shared implementation in models/_shared/)
+   `-- opens the interface MODEL.json names:
+         kilix-bonsai-chat   -> GPU vendor launchers, or bonsai-cpu (llama.cpp, CPU)
+         kilix-bonsai-image  -> local image runtime (isolated venv) or a remote
+         kilix-bonsai-speech -> VibeASR asr_infer
 ```
 
-`MODEL.json` is the single source of truth and every caller reads it — the two
-scripts, the CLI, and the UI. So they cannot disagree about what a model is,
-and **adding a model is adding a folder**: no table to update, no code to
-touch. The scripts themselves are one shared implementation in `models/_shared/`
-that each folder's wrapper names itself to; what differs between models is the
-JSON, not the logic.
-
-Digests and sizes in `MODEL.json` were read from the upstream API rather than
-transcribed. For Bonsai 8B the recorded digest independently matches the one in
-the integer engine's identity record.
-
-## What the download does
-
-`pull.sh` is not a `curl` loop:
-
-- **Resumable** — an interrupted 4.5 GB transfer continues, it does not restart.
-- **Verified** — every file with a published digest is sha256-checked after it
-  lands. A mismatch fails; it does not warn.
-- **Atomic per file** — downloads land on `.part` and are renamed only after
-  they verify, so an interrupted run never leaves a file that looks complete.
-- **Idempotent** — a file already present at the right size and digest costs a
-  stat and a hash, so re-running after a network drop is cheap.
-- **Adoptable** — `--from DIR` takes files from a copy already on the machine,
-  hard-linking rather than copying when it can, and still checking every digest.
-
-## What the dependency install does — and does not
-
-`install-deps.sh` **checks and reports** system packages; it does not install
-them unless you pass `--apt`. That is deliberate: installing distro packages
-needs root, and release images pin an apt snapshot for reproducibility, so a
-script that quietly ran `apt-get install` from a model UI could drift a machine
-off its pinned closure. Python packages go into a virtualenv this repository
-owns, one per model — never the system interpreter, and never inside a store
-another component owns.
+Nothing here reimplements inference. Chat probes a local GPU, then a remote
+one, then hands over to `bonsai-cpu chat`. Environment variables, the runtime
+choices and what was learned running them are in
+[docs/configuration-and-runtimes.md](docs/configuration-and-runtimes.md).
 
 ## Tests
 
@@ -221,22 +151,39 @@ opens on setup when the store is empty, no action that costs bytes or touches
 the system runs without a confirmation, and every screen clips cleanly down to
 20×8.
 
-## Install
+## Documentation
 
-```sh
-./install.sh                       # all five commands into ~/.local/bin
-KILIX_BONSAI_PREFIX=/usr/local ./install.sh
-./install.sh --uninstall           # remove this checkout's unchanged launchers
-```
+- [docs/models-and-downloads.md](docs/models-and-downloads.md) — shared stores, the model folder layout, what `pull.sh` and `install-deps.sh` do
+- [docs/configuration-and-runtimes.md](docs/configuration-and-runtimes.md) — environment variables, GPU/CPU/remote runtimes, recorded findings
+- [bonsai-cpu/README.md](bonsai-cpu/README.md) — the bundled CPU runtime on pinned upstream llama.cpp
+- [models/bonsai-8b/README.md](models/bonsai-8b/README.md), [models/bonsai-27b/README.md](models/bonsai-27b/README.md), [models/bitnet-b1.58-2b4t/README.md](models/bitnet-b1.58-2b4t/README.md), [models/vibevoice-asr-bitnet/README.md](models/vibevoice-asr-bitnet/README.md), [models/bonsai-image-4b/README.md](models/bonsai-image-4b/README.md) — one guide per model
 
-The commands are launchers that run the tools from this checkout, including
-`bonsai-cpu/bin/bonsai-cpu`, so updating is a `git pull` rather than a
-reinstall. Uninstall removes only launchers whose contents still exactly match
-what this checkout generated; a locally edited or replaced command is retained
-and reported instead of being deleted.
+## Related repositories
+
+- [kilix](https://github.com/itsmygithubacct/kilix#readme) — pins and installs this repository behind `kilix bonsai`
+- [kilix-content](https://github.com/itsmygithubacct/kilix-content#readme) — submodule at `third_party/kilix-content`; the licence-receipt store for Bonsai Image and the `kilix-model-store` catalog entry
+- [kilix-voice](https://github.com/itsmygithubacct/kilix-voice#readme) — dictation reads the VibeVoice store this repository fills
+- [kilix-tui-utils](https://github.com/itsmygithubacct/kilix-tui-utils#readme) — provides the optional pixel desktop for `--graphics`; the text shell here is a small local copy of its `kilix_tui.shell`
+- [kilix-95](https://github.com/itsmygithubacct/kilix-95#readme) — Start menu entry Programs ▸ BitNet Models
+
+## Part of Plebian-OS
+
+kilix-bonsai is one of the repositories behind
+[Plebian-OS](https://github.com/itsmygithubacct/plebian-os#readme), a Debian
+install whose desktop is [Kilix](https://github.com/itsmygithubacct/kilix#readme)
+running the [Kilix 95](https://github.com/itsmygithubacct/kilix-95#readme)
+desktop through [Pleb](https://github.com/itsmygithubacct/pleb#readme).
+Kilix installs it at a pinned commit the first time `kilix bonsai` or the
+Model Store runs. The map of every repository and how it ships is on the
+[components page](https://github.com/itsmygithubacct/plebian-os/blob/main/docs/components.md).
 
 ## Versioning
 
 `0.2.0`. Kilix Bonsai is in the coordinated Plebian-OS 0.2.0 version set and is
 selected by an exact commit in Kilix. Tags and release artifacts are still
 created only by the release procedure.
+
+## Licence
+
+GPL-3.0. See [LICENSE](LICENSE). The bundled `bonsai-cpu/` component is MIT;
+see [bonsai-cpu/LICENSE](bonsai-cpu/LICENSE).
