@@ -33,6 +33,12 @@ TITLE = "Kilix Bonsai Image"
 FIELDS = ("prompt", "reference", "size", "seed", "steps", "variant")
 
 
+def weight_variant(model: catalog.Model, name: str) -> catalog.Variant:
+    """Map the composer's ternary/binary choice onto the catalog weight set."""
+    token = "binary-gemlite" if name == "binary" else "ternary-gemlite"
+    return model.variant(token)
+
+
 class State:
     def __init__(self, model: catalog.Model) -> None:
         self.model = model
@@ -138,6 +144,15 @@ class State:
         if problem:
             self.status = problem
             return
+        chosen = weight_variant(self.model, self.request.variant)
+        if store.state(self.model, chosen).state != store.PRESENT:
+            with provision.terminal(self, f"Installing {chosen.title}"):
+                status = provision.ensure_downloaded(self.model, chosen)
+            if store.state(self.model, chosen).state != store.PRESENT:
+                self.status = ("weights are not installed"
+                               if status in (None, 0)
+                               else f"install exited {status}")
+                return
         ok, why = self.backends.get(self.request.backend, (False, "unprobed"))
         if not ok:
             self.status = f"{self.request.backend} is not usable: {why}"
@@ -563,8 +578,12 @@ def main(argv: list[str] | None = None) -> int:
         with open(path, "w", encoding="utf-8") as target:
             target.write(screen.render_to_text(render, state) + "\n")
         return 0
-    if store.state(model).state != store.PRESENT:
-        provision.ensure_downloaded(model)
+    chosen = weight_variant(model, state.request.variant)
+    if store.state(model, chosen).state != store.PRESENT:
+        status = provision.ensure_downloaded(model, chosen)
+        if (status not in (None, 0)
+                and store.state(model, chosen).state != store.PRESENT):
+            return status
     provision.ensure_deps(model)
     state.probe()
     status = pixel.run(

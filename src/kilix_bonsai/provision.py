@@ -14,6 +14,7 @@ does badly and a plain terminal does perfectly.
 from __future__ import annotations
 
 import curses
+import json
 import os
 import shutil
 import subprocess
@@ -66,33 +67,77 @@ def _kilix() -> str | None:
     return shutil.which("kilix")
 
 
-def ensure_downloaded(model: Model) -> int | None:
-    """Install a missing model on first use. None means nothing was started.
+def catalog_asset(model: Model, variant: Variant | None = None) -> str:
+    """The content-catalog id whose licence screen covers this weight set.
 
-    ``kilix models ensure`` shows the licence and waits for an answer.
-    ``pull.sh`` still refuses to fetch when no receipt covers the gate, so
-    declining installs nothing.
+    A speech model names that id in ``licence_gate``. The image model publishes
+    one catalog id per variant. Every other model publishes its own id. This
+    does not invent a gate the catalog does not have.
+    """
+    chosen = variant or model.default_variant
+    if model.licence_gate:
+        return model.licence_gate
+    if model.id == "bonsai-image-4b":
+        return f"{model.id}-{chosen.id}"
+    return model.id
+
+
+def _verified_asset_dir(kilix: str, asset: str) -> str | None:
+    """Return the verified content directory, or None when verify is unusable.
+
+    A non-object, a mismatched id, a relative root, or a symlink is not a
+    source. The caller then pulls without ``--from`` rather than crashing.
+    """
+    try:
+        completed = subprocess.run(
+            [kilix, "models", "verify", asset],
+            check=False, capture_output=True, text=True)
+    except OSError:
+        return None
+    if completed.returncode != 0:
+        return None
+    try:
+        report = json.loads(completed.stdout)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(report, dict) or report.get("verified") != asset:
+        return None
+    root = report.get("root")
+    if not isinstance(root, str) or not os.path.isabs(root):
+        return None
+    directory = os.path.join(root, "assets", asset)
+    if os.path.islink(directory) or not os.path.isdir(directory):
+        return None
+    return directory
+
+
+def ensure_downloaded(model: Model, variant: Variant | None = None) -> int | None:
+    """Install a missing weight set on first use. None means nothing was started.
+
+    ``kilix models ensure`` shows the licence and waits for an answer. It does
+    not answer. A decline does not pull. ``pull.sh`` still refuses a gated
+    model when no receipt covers it, and adopts a verified local copy with
+    ``--from`` instead of downloading the same bytes again.
     """
     from . import store
-    if store.state(model).state == store.PRESENT:
+    chosen = variant or model.default_variant
+    if store.state(model, chosen).state == store.PRESENT:
         return None
     if not first_use_allowed():
         return None
-    gate = model.licence_gate
-    # An ungated download is the store's confirm. First use only fetches a
-    # model whose licence screen can be shown.
-    if not gate:
-        return None
+    asset = catalog_asset(model, chosen)
     kilix = _kilix()
     if kilix is None:
-        print(f"{model.title}: run kilix models install {gate}", file=sys.stderr)
+        print(f"{model.title}: run kilix models install {asset}", file=sys.stderr)
         return 1
     print(f"First use of {model.title}: its licence is shown before "
           "anything is downloaded.", flush=True)
-    status = subprocess.call([kilix, "models", "ensure", gate])
+    status = subprocess.call([kilix, "models", "ensure", asset])
     if status != 0:
         return status
-    return run(pull_argv(model))
+    source = _verified_asset_dir(kilix, asset)
+    selected = None if chosen.default else chosen
+    return run(pull_argv(model, selected, source=source))
 
 
 def ensure_deps(model: Model) -> int | None:
