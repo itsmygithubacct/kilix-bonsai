@@ -22,7 +22,7 @@ sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
     "src"))
 
-from kilix_bonsai import catalog, pixel, screen, store, text, widgets  # noqa: E402
+from kilix_bonsai import catalog, pixel, provision, screen, store, text, widgets  # noqa: E402
 from kilix_bonsai.runtime import chat                      # noqa: E402
 
 TITLE = "Kilix Bonsai Chat"
@@ -46,6 +46,7 @@ class State:
         self.finished = False
         self.delegate: list[str] | None = None
         self.choice: chat.Choice | None = None
+        self.prepared: chat.Choice | None = None
         self.session: chat.Session | None = None
 
     # -- lifecycle ----------------------------------------------------------
@@ -58,7 +59,7 @@ class State:
         with image generation, so opening the UI must not take it.
         """
         def work() -> None:
-            choice = chat.choose(self.model.id)
+            choice = self.prepared if self.prepared is not None else chat.choose(self.model.id)
             if not choice.usable:
                 self.choice = choice
                 self.error = choice.reason
@@ -84,6 +85,9 @@ class State:
             self.choice = choice
             self.status = f"ready · {choice.backend} · {choice.reason}"
 
+        if self.prepared is not None:
+            work()
+            return
         threading.Thread(target=work, daemon=True).start()
 
     def _progress(self, message: str) -> None:
@@ -403,16 +407,26 @@ def main(argv: list[str] | None = None) -> int:
     if model is None:
         ready = [m for m in chat_models
                  if store.state(m).state == store.PRESENT]
-        if not ready:
-            print("kilix-bonsai-chat: no chat model is downloaded. "
-                  "Run `kilix bonsai` and download one.", file=sys.stderr)
-            return 1
-        model = ready[0]
+        model = ready[0] if ready else next(
+            (item for item in chat_models if item.id == "bonsai-8b"), None)
+    if model is None:
+        print("kilix-bonsai-chat: no chat model is downloaded. "
+              "Run `kilix bonsai` and download one.", file=sys.stderr)
+        return 1
     state = State(model)
     if path := screen.screenshot_argv(argv):
         with open(path, "w", encoding="utf-8") as target:
             target.write(screen.render_to_text(render, state) + "\n")
         return 0
+    if store.state(model).state != store.PRESENT:
+        status = provision.ensure_downloaded(model)
+        if store.state(model).state != store.PRESENT:
+            if status not in (None, 0):
+                return status
+            print("kilix-bonsai-chat: no chat model is downloaded. "
+                  "Run `kilix bonsai` and download one.", file=sys.stderr)
+            return 1
+    state.prepared = chat.ensure_callable(chat.choose(model.id))
     state.boot()
     try:
         status = pixel.run(

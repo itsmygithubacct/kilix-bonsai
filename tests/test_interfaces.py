@@ -537,6 +537,36 @@ class CpuFallbackTest(unittest.TestCase):
             self.assertIn("run: bonsai-cpu build", choice.reason)
             self.assertIn("Kilix Bonsai", choice.reason)
 
+    def test_a_missing_vendor_launcher_uses_the_built_cpu_runner(self) -> None:
+        from kilix_bonsai.runtime import chat
+        saved = (chat.launcher, chat.cpu_runtime, chat.cpu_runtime_built)
+        chat.launcher = lambda model_id: None
+        chat.cpu_runtime = lambda: "/usr/bin/bonsai-cpu"
+        chat.cpu_runtime_built = lambda: True
+        try:
+            choice = chat.ensure_callable(chat.Choice(
+                "bonsai-8b", chat.LOCAL, 5744, "5744 MiB free covers bonsai-8b", True))
+        finally:
+            chat.launcher, chat.cpu_runtime, chat.cpu_runtime_built = saved
+        self.assertTrue(choice.usable)
+        self.assertEqual(choice.backend, chat.CPU)
+        self.assertIn("running on CPU", choice.reason)
+
+    def test_an_unbuilt_runner_is_not_compiled_without_a_terminal(self) -> None:
+        from kilix_bonsai.runtime import chat
+        saved = (chat.launcher, chat.cpu_runtime, chat.cpu_runtime_built, chat._auto_build)
+        chat.launcher = lambda model_id: None
+        chat.cpu_runtime = lambda: "/usr/bin/bonsai-cpu"
+        chat.cpu_runtime_built = lambda: False
+        chat._auto_build = lambda: False
+        try:
+            choice = chat.ensure_callable(chat.Choice(
+                "bonsai-8b", chat.LOCAL, 5744, "fits", True))
+        finally:
+            (chat.launcher, chat.cpu_runtime, chat.cpu_runtime_built, chat._auto_build) = saved
+        self.assertFalse(choice.usable)
+        self.assertIn("bonsai-cpu build", choice.reason)
+
     def test_the_pending_build_probe_matches_the_cpu_landing(self) -> None:
         from kilix_bonsai.runtime import chat
         saved = (chat.free_vram_mib, chat.cpu_runtime, chat.cpu_runtime_built)
