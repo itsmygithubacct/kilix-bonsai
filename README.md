@@ -28,6 +28,7 @@ cannot provide it. `--screenshot` always captures the text rendering.
 | `kilix-bonsai` | all of them | The launcher and the model store |
 | `kilix-bonsai-chat` | the 1-bit text models | On a GPU, streams one vendor process per turn; on CPU, opens bonsai-cpu's resident, persistent chat |
 | `kilix-bonsai-image` | Bonsai Image 4B | Prompt, reference image, seed, size and steps; a gallery that records what produced each result and can feed one back in |
+| `kilix-bonsai-enlarge` | Bonsai Image 4B | bonsai-enlarge: enlarge a thumbnail, or a detail of an image (`--crop`), by partly redrawing a Lanczos enlargement; see [Enlarging](#enlarging) |
 | `kilix-bonsai-speech` | VibeVoice ASR BitNet | Record or point at a WAV; transcript grows chunk by chunk; copy or write it out |
 | `bonsai-cpu` | Bonsai 8B and 27B | Pinned upstream llama.cpp, CPU-only build, resident chat, one-shot inference, serving, and benchmarks |
 
@@ -157,6 +158,35 @@ its declared engine is `bitnet.cpp`, and no chat adapter here drives it yet.
 `kilix` reaches the same surface: `kilix bonsai`, `kilix bonsai list`,
 `kilix bonsai pull …`, and so on. It is also in the Kilix 95 Start menu under
 Programs ▸ **BitNet Models**.
+
+## Enlarging
+
+`kilix-bonsai-enlarge` (bonsai-enlarge) makes a small picture large: an
+emoji, a symbol, a thumbnail, or a detail cut from a bigger image.
+
+```sh
+kilix-bonsai-enlarge emoji.png --output big.png
+kilix-bonsai-enlarge photo.jpg --crop 120,40,64,64 --scale 8 --output detail.png
+kilix-bonsai-enlarge icon.png --strength 0.35 --baseline lanczos.png --output big.png
+```
+
+The pinned Prism forward is text to image only, so this adds image to image
+in the flow-matching way (SDEdit), in `runtime/enlarge_forward.py`. The
+source is cut, laid on `--background` where it is transparent, and resampled
+with Lanczos to the output size (long side 512 by default, multiples of 32).
+That picture is encoded by the model's VAE, moved part of the way back to
+noise, and only the last `round(steps x strength)` of `--steps` (8) steps are
+run. Strength 0.5 is the default; lower keeps more of the source, higher lets
+the model repaint it. `--prompt` says what the picture is; the default asks
+only for a sharp, clean version. `--baseline` also writes the plain Lanczos
+result, for comparison, and every output gets `OUTPUT.json` recording what
+produced it.
+
+It runs through the same guarded local CLI as `kilix-bonsai-image`
+(`tools/bonsai-image/main.py enlarge ...`): consent receipts, sealed model
+copies, network off, and the 4.5 GiB free-GPU check before anything loads.
+Weights install on first use the same way. Only `--variant ternary` has been
+run on real hardware.
 
 ## A model is a folder
 

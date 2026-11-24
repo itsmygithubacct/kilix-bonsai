@@ -21,6 +21,7 @@ COMMANDS = (
     "kilix-bonsai",
     "kilix-bonsai-chat",
     "kilix-bonsai-image",
+    "kilix-bonsai-enlarge",
     "kilix-bonsai-speech",
     "bonsai-cpu",
 )
@@ -42,7 +43,7 @@ class InstallTest(unittest.TestCase):
                 timeout=30,
             )
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn("installed 5 commands", result.stdout)
+            self.assertIn("installed 6 commands", result.stdout)
 
             for command in COMMANDS:
                 launcher = prefix / "bin" / command
@@ -87,7 +88,7 @@ class InstallTest(unittest.TestCase):
                 capture_output=True, text=True, env=environment, timeout=30,
             )
             self.assertEqual(uninstall.returncode, 0, uninstall.stderr)
-            self.assertIn("removed 5 launchers", uninstall.stdout)
+            self.assertIn("removed 6 launchers", uninstall.stdout)
             for command in COMMANDS:
                 self.assertFalse((prefix / "bin" / command).exists(), command)
             self.assertEqual(

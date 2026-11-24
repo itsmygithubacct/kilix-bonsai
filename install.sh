@@ -11,7 +11,7 @@ set -euo pipefail
 HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PREFIX="${KILIX_BONSAI_PREFIX:-$HOME/.local}"
 BIN="$PREFIX/bin"
-TOOLS="kilix-bonsai kilix-bonsai-chat kilix-bonsai-image kilix-bonsai-speech"
+TOOLS="kilix-bonsai kilix-bonsai-chat kilix-bonsai-image kilix-bonsai-enlarge kilix-bonsai-speech"
 
 die() { printf 'kilix-bonsai: %s\n' "$1" >&2; exit 1; }
 shell_quote() {
