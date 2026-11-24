@@ -230,14 +230,25 @@ def build_parser() -> argparse.ArgumentParser:
                         help=argparse.SUPPRESS)
     verify.set_defaults(func=cmd_verify)
 
+    sub.add_parser("enlarge", add_help=False,
+                   help="bonsai-enlarge: enlarge a thumbnail or a detail "
+                        "(kilix-bonsai-enlarge; no arguments opens its TUI)")
+
     sub.add_parser("doctor",
                    help="check downloader, space, and store permissions"
                    ).set_defaults(func=cmd_doctor)
     return parser
 
 
+ENLARGE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                       "kilix-bonsai-enlarge", "main.py")
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
+    if argv[:1] == ["enlarge"]:
+        # bonsai-enlarge owns its own arguments and its TUI; hand them over whole.
+        os.execv(sys.executable, [sys.executable, ENLARGE, *argv[1:]])
     args = build_parser().parse_args(argv)
     if args.command is None:
         if args.graphics:

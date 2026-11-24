@@ -173,3 +173,87 @@ class Record:
         path = output.with_suffix(output.suffix + ".json")
         path.write_text(json.dumps(asdict(self), indent=2, sort_keys=True) + "\n")
         return path
+
+
+@dataclass
+class Request:
+    """One enlargement as an interface composes it."""
+
+    input: str = ""
+    crop: str = ""
+    size: str = ""
+    strength: float = DEFAULT_STRENGTH
+    steps: int = DEFAULT_STEPS
+    seed: int | None = None
+    prompt: str = ""
+    output: str = ""
+    variant: str = "ternary"
+
+    def validate(self) -> str | None:
+        """Return a human-readable problem, or None when it is runnable."""
+        if not self.input:
+            return "an input image is required"
+        if not Path(self.input).expanduser().is_file():
+            return f"no input image at {self.input}"
+        if not self.output:
+            return "an output path is required"
+        try:
+            if self.crop:
+                parse_crop(self.crop)
+            if self.size:
+                parse_size(self.size)
+            schedule_start(self.steps, self.strength)
+        except EnlargeError as error:
+            return str(error)
+        if self.variant not in ("ternary", "binary"):
+            return "variant must be ternary or binary"
+        return None
+
+    def baseline_path(self) -> str:
+        output = Path(self.output).expanduser()
+        return str(output.with_name(output.stem + "-lanczos" + output.suffix))
+
+    def argv(self, cli: str) -> list[str]:
+        """The guarded image CLI's ``enlarge`` command for this request."""
+        argv = [cli, "enlarge", str(Path(self.input).expanduser()),
+                "--output", str(Path(self.output).expanduser()),
+                "--baseline", self.baseline_path(),
+                "--strength", f"{self.strength:g}", "--steps", str(self.steps),
+                "--variant", self.variant]
+        if self.crop:
+            argv += ["--crop", self.crop]
+        if self.size:
+            argv += ["--size", self.size]
+        if self.seed is not None:
+            argv += ["--seed", str(self.seed)]
+        if self.prompt:
+            argv += ["--prompt", self.prompt]
+        return argv
+
+
+def next_output(directory: Path) -> Path:
+    """The first free ``enlarge-NNN.png`` in ``directory``."""
+    taken = {path.name for path in directory.glob("enlarge-*.png")} \
+        if directory.is_dir() else set()
+    number = 1
+    while f"enlarge-{number:03d}.png" in taken:
+        number += 1
+    return directory / f"enlarge-{number:03d}.png"
+
+
+def history(directory: Path) -> list[tuple[Path, dict]]:
+    """Past results in ``directory``, oldest first, with their records."""
+    rows = []
+    if not directory.is_dir():
+        return rows
+    for record in sorted(directory.glob("*.png.json")):
+        try:
+            data = json.loads(record.read_text())
+        except (OSError, ValueError):
+            continue
+        if data.get("schema") != SIDECAR_SCHEMA:
+            continue
+        image = record.with_suffix("")
+        if image.is_file():
+            rows.append((image, data))
+    return rows

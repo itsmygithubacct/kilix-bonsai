@@ -11,6 +11,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+from pathlib import Path
 import sys
 import tempfile
 import unittest
@@ -413,7 +414,8 @@ class StubCanvas:
 class VisualSystemTest(unittest.TestCase):
     """Every task uses the Kilix shell in pixels and in text."""
 
-    TOOLS = ("kilix-bonsai-chat", "kilix-bonsai-image", "kilix-bonsai-speech")
+    TOOLS = ("kilix-bonsai-chat", "kilix-bonsai-image", "kilix-bonsai-enlarge",
+             "kilix-bonsai-speech")
 
     def _state(self, name, module):
         if name == "kilix-bonsai-chat":
@@ -421,6 +423,11 @@ class VisualSystemTest(unittest.TestCase):
                                      if m.runtime.get("kind") == "chat"))
         if name == "kilix-bonsai-image":
             state = module.State(catalog.find("bonsai-image-4b"))
+            state.load_field()
+            return state
+        if name == "kilix-bonsai-enlarge":
+            state = module.State(catalog.find("bonsai-image-4b"),
+                                 results=Path(tempfile.mkdtemp()) / "none")
             state.load_field()
             return state
         return module.State(catalog.find("vibevoice-asr-bitnet"))

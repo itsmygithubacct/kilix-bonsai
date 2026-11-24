@@ -184,5 +184,153 @@ class LocalEnlargeTest(unittest.TestCase):
                          ('a.png', 'b.png', 0.4, '1,2,3,4', 8))
 
 
+def load_tool(name):
+    import importlib.util
+    path = ROOT / 'tools' / name / 'main.py'
+    spec = importlib.util.spec_from_file_location(name.replace('-', '_'), path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class RequestTest(unittest.TestCase):
+    def test_argv_is_the_guarded_cli_enlarge_with_a_baseline_beside_the_output(self):
+        request = enlarge.Request(input='/x/in.png', output='/y/enlarge-004.png',
+                                  crop='1,2,3,4', size='640x384', strength=0.35,
+                                  steps=12, seed=9, prompt='a heart')
+        self.assertEqual(request.argv('/cli'), [
+            '/cli', 'enlarge', '/x/in.png', '--output', '/y/enlarge-004.png',
+            '--baseline', '/y/enlarge-004-lanczos.png', '--strength', '0.35',
+            '--steps', '12', '--variant', 'ternary', '--crop', '1,2,3,4',
+            '--size', '640x384', '--seed', '9', '--prompt', 'a heart'])
+        bare = enlarge.Request(input='/x/in.png', output='/y/o.png')
+        self.assertEqual(bare.argv('/cli')[-6:],
+                         ['--strength', '0.5', '--steps', '8', '--variant', 'ternary'])
+
+    def test_validate_names_the_first_problem(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / 'in.png'
+            source.write_bytes(b'x')
+            ok = dict(input=str(source), output=str(Path(directory) / 'o.png'))
+            self.assertIsNone(enlarge.Request(**ok).validate())
+            cases = [(dict(input=''), 'input image is required'),
+                     (dict(input=str(source) + '.missing'), 'no input image'),
+                     (dict(output=''), 'output path is required'),
+                     (dict(crop='1,2'), 'X,Y,W,H'),
+                     (dict(size='500x512'), 'multiple of 32'),
+                     (dict(strength=0.0), 'strength'),
+                     (dict(variant='quaternary'), 'variant')]
+            for change, message in cases:
+                with self.subTest(change=change):
+                    self.assertIn(message, enlarge.Request(**{**ok, **change}).validate())
+
+    def test_next_output_and_history(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.assertEqual(enlarge.next_output(root / 'absent').name, 'enlarge-001.png')
+            for name in ('enlarge-001.png', 'enlarge-002.png'):
+                (root / name).write_bytes(b'png')
+            self.assertEqual(enlarge.next_output(root).name, 'enlarge-003.png')
+            (root / 'enlarge-002.png.json').write_text(json.dumps(
+                {'schema': 'kilix.bonsai.enlarge/v1', 'strength': 0.5}))
+            (root / 'enlarge-001.png.json').write_text(json.dumps({'schema': 'other'}))
+            (root / 'gone.png.json').write_text(json.dumps(
+                {'schema': 'kilix.bonsai.enlarge/v1'}))
+            self.assertEqual([(p.name, d['strength']) for p, d in enlarge.history(root)],
+                             [('enlarge-002.png', 0.5)])
+
+
+class InterfaceTest(unittest.TestCase):
+    def setUp(self):
+        self.tool = load_tool('kilix-bonsai-enlarge')
+        from kilix_bonsai import catalog
+        self.temporary = tempfile.TemporaryDirectory()
+        self.state = self.tool.State(catalog.find('bonsai-image-4b'),
+                                     results=Path(self.temporary.name))
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def type_into(self, text):
+        for character in text:
+            self.tool.handle(ord(character), self.state)
+
+    def test_fields_commit_on_tab_and_enter_refuses_a_missing_input(self):
+        self.state.load_field()
+        self.type_into('/no/such.png')
+        self.tool.handle(ord('\t'), self.state)
+        self.assertEqual(self.state.request.input, '/no/such.png')
+        self.assertEqual(self.tool.FIELDS[self.state.field], 'crop')
+        for _ in range(2):
+            self.tool.handle(ord('\t'), self.state)
+        self.state.editor.set('')
+        self.type_into('0.3')
+        with patch.object(self.tool.subprocess, 'run') as run:
+            self.tool.handle(10, self.state)
+        self.assertEqual(self.state.request.strength, 0.3)
+        run.assert_not_called()
+        self.assertIn('no input image at /no/such.png', self.state.status)
+
+    def test_enter_runs_the_guarded_cli_and_advances_the_output(self):
+        source = Path(self.temporary.name) / 'in.png'
+        source.write_bytes(b'x')
+        self.state.request.input = str(source)
+        self.state.load_field()
+        done = Mock(returncode=0, stdout='result: enlarged x\n', stderr='')
+
+        def finished(argv, **_):
+            Path(argv[argv.index('--output') + 1]).write_bytes(b'png')
+            return done
+        threads = []
+        with patch.object(self.tool.subprocess, 'run', side_effect=finished) as run, \
+                patch.object(self.tool.threading, 'Thread',
+                             side_effect=lambda target, daemon: threads.append(target) or Mock()):
+            self.tool.handle(10, self.state)
+            threads[0]()
+        argv = run.call_args.args[0]
+        self.assertEqual(argv[1:4], [self.tool.CLI, 'enlarge', str(source)])
+        self.assertEqual(Path(argv[argv.index('--output') + 1]).name, 'enlarge-001.png')
+        self.assertFalse(self.state.running)
+        self.assertIn('enlarged in', self.state.status)
+        self.assertEqual(Path(self.state.request.output).name, 'enlarge-002.png')
+
+    def test_a_failed_run_shows_the_error_line(self):
+        source = Path(self.temporary.name) / 'in.png'
+        source.write_bytes(b'x')
+        self.state.request.input = str(source)
+        done = Mock(returncode=1, stdout='Loading\nError: GPU busy: 3953 MiB free\n', stderr='')
+        with patch.object(self.tool.subprocess, 'run', return_value=done), \
+                patch.object(self.tool.threading, 'Thread',
+                             side_effect=lambda target, daemon: Mock(start=target)):
+            self.state.enlarge()
+        self.assertEqual(self.state.status, 'GPU busy: 3953 MiB free')
+
+    def test_text_frame_uses_the_kilix_shell(self):
+        from kilix_bonsai import screen
+        frame = screen.render_to_text(self.tool.render, self.state, height=20, width=80)
+        self.assertIn('KILIX TUI', frame)
+        self.assertIn('strength  0.5', frame)
+        self.assertIn('enlarge-001.png', frame)
+
+    def test_cli_arguments_bypass_the_interface(self):
+        with patch.object(self.tool, 'interface') as interface, \
+                patch.object(self.tool, 'ensure_weights', return_value=0), \
+                patch.object(self.tool.os, 'execv') as execv:
+            self.tool.main(['in.png', '--output', 'o.png'])
+            interface.assert_not_called()
+            self.assertEqual(execv.call_args.args[1][1:],
+                             [self.tool.CLI, 'enlarge', 'in.png', '--output', 'o.png'])
+            self.tool.main([])
+            interface.assert_called_once_with([])
+
+    def test_kilix_bonsai_enlarge_verb_hands_over_its_arguments(self):
+        cli = load_tool('kilix-bonsai')
+        with patch.object(cli.os, 'execv', side_effect=SystemExit(0)) as execv:
+            with self.assertRaises(SystemExit):
+                cli.main(['enlarge', 'in.png', '--strength', '0.4'])
+        self.assertEqual(execv.call_args.args[1][1:],
+                         [cli.ENLARGE, 'in.png', '--strength', '0.4'])
+
+
 if __name__ == '__main__':
     unittest.main()
