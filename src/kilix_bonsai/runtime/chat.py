@@ -25,6 +25,7 @@ import shlex
 import shutil
 import signal
 import subprocess
+import sys
 from dataclasses import dataclass
 
 # Measured, not guessed: the vendor's own notes put the regular 27B process at
@@ -274,6 +275,80 @@ def choose(preferred: str | None = None,
     return Choice(preferred or "bonsai-8b", LOCAL, None,
                   "no GPU with enough free memory was found, and bonsai-cpu "
                   "is not installed for the CPU fallback", False)
+
+
+def _auto_build() -> bool:
+    value = os.environ.get("KILIX_MODEL_AUTO_INSTALL")
+    if value is not None and value.strip().casefold() in {"0", "no", "false", "off"}:
+        return False
+    try:
+        return sys.stdin.isatty() and sys.stdout.isatty()
+    except (AttributeError, OSError, ValueError):
+        return False
+
+
+def _cpu_choice(model_id: str, reason: str, usable: bool = True) -> Choice:
+    return Choice(model_id, CPU, None, reason, usable)
+
+
+def _build_cpu_runtime(model_id: str) -> Choice:
+    """Compile the pinned llama.cpp runner. Weights are not downloaded here."""
+    runner = cpu_runtime()
+    if runner is None:
+        return _cpu_choice(model_id, "bonsai-cpu is not installed", False)
+    if cpu_runtime_built():
+        return _cpu_choice(model_id, "running on CPU")
+    missing = cpu_build_missing_packages()
+    if missing:
+        return _cpu_choice(
+            model_id,
+            "cannot build the CPU runtime: missing " + ", ".join(missing),
+            False)
+    if not _auto_build():
+        return _cpu_choice(
+            model_id,
+            "bonsai-cpu is installed but its compiled runtime is not "
+            "built yet. run: bonsai-cpu build",
+            False)
+    print("Building the pinned bonsai-cpu runtime...", flush=True)
+    try:
+        done = subprocess.run([runner, "build"], check=False)
+    except OSError as error:
+        return _cpu_choice(model_id, f"bonsai-cpu build failed: {error}", False)
+    if done.returncode != 0 or not cpu_runtime_built():
+        return _cpu_choice(
+            model_id,
+            "bonsai-cpu build did not produce the runtime. run: bonsai-cpu build",
+            False)
+    return _cpu_choice(model_id, "running on CPU")
+
+
+def ensure_callable(choice: Choice) -> Choice:
+    """Use or build the pinned CPU runner when the chosen chat cannot start.
+
+    A fitting GPU with no vendor launcher is not a chat. This repository's
+    runner is bonsai-cpu, and first use builds it. Weight downloads stay
+    behind their licence gate.
+    """
+    if choice.backend == CPU and choice.usable:
+        return choice
+    needs_build = (choice.backend == CPU and not choice.usable
+                   and "bonsai-cpu build" in choice.reason)
+    if needs_build:
+        return _build_cpu_runtime(choice.model_id)
+    if not choice.usable or choice.backend == REMOTE:
+        return choice
+    if launcher(choice.model_id) is not None:
+        return choice
+    if cpu_runtime() is None:
+        return choice
+    if not cpu_runtime_built():
+        built = _build_cpu_runtime(choice.model_id)
+        if not built.usable:
+            return built
+    return _cpu_choice(
+        choice.model_id,
+        f"no vendor launcher for {choice.model_id}; running on CPU")
 
 
 def delegate_argv(choice: Choice) -> list[str]:

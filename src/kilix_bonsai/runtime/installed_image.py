@@ -8,6 +8,7 @@ import hashlib
 import os
 from pathlib import Path
 import stat
+import subprocess
 import sys
 import tempfile
 import time
@@ -23,6 +24,63 @@ ProtocolError = InstalledImageError
 _READ_BLOCK = 1024 * 1024
 SNAPSHOT_SECONDS = 120
 _SEALS = 15  # F_SEAL_SEAL | F_SEAL_SHRINK | F_SEAL_GROW | F_SEAL_WRITE
+_CONTENT = "third_party/kilix-content"
+
+
+def _git_text(argv: list[str]) -> str:
+    try:
+        done = subprocess.run(argv, capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    if done.returncode != 0:
+        return ""
+    return done.stdout.strip()
+
+
+def _gitlink(repo: Path, path: str) -> str:
+    line = _git_text(["git", "-C", str(repo), "ls-tree", "HEAD", "--", path])
+    parts = line.split()
+    if (len(parts) >= 3 and parts[0] == "160000" and parts[1] == "commit"
+            and len(parts[2]) == 40 and all(c in "0123456789abcdef" for c in parts[2])):
+        return parts[2]
+    return ""
+
+
+def _head(repo: Path) -> str:
+    line = _git_text(["git", "-C", str(repo), "rev-parse", "HEAD"])
+    if len(line) == 40 and all(c in "0123456789abcdef" for c in line):
+        return line
+    return ""
+
+
+def content_authority(repo: Path) -> Path:
+    """Return kilix-content src, checking out the pinned gitlink when it is absent.
+
+    Installing the Bonsai command checks out the gitlink as an empty directory.
+    The image runtime is what needs that checkout, and an empty one is not a
+    different content API.
+    """
+    src = repo / _CONTENT / "src"
+    marker = src / "kilix_content" / "__init__.py"
+    selected = _gitlink(repo, _CONTENT)
+    checkout = repo / _CONTENT
+    if selected and _head(checkout) == selected and marker.is_file():
+        return src
+    if not selected:
+        return src
+    env = os.environ.copy()
+    env["GIT_TERMINAL_PROMPT"] = "0"
+    try:
+        done = subprocess.run(
+            ["git", "-C", str(repo), "submodule", "update", "--init", "--", _CONTENT],
+            capture_output=True, text=True, timeout=120, env=env)
+    except (OSError, subprocess.SubprocessError) as error:
+        raise ProtocolError("INVALID_RUNTIME",
+                            "pinned kilix-content checkout is unavailable") from error
+    if (done.returncode != 0 or _head(checkout) != selected or not marker.is_file()):
+        raise ProtocolError("INVALID_RUNTIME",
+                            "pinned kilix-content checkout is unavailable")
+    return src
 
 
 def memory_file():
@@ -56,7 +114,7 @@ class InstalledModel:
         if (type(asset_id) is not str or not asset_id or len(asset_id) > 128
                 or type(maximum_bytes) is not int or not 0 < maximum_bytes <= 8 * 1024**3):
             raise ProtocolError("INVALID_RUNTIME", "invalid installed model selection or budget")
-        authority = Path(__file__).resolve().parents[3]/'third_party/kilix-content/src'
+        authority = content_authority(Path(__file__).resolve().parents[3])
         sys.path.insert(0,str(authority))
         try:
             import kilix_content as content

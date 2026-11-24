@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
     "src"))
 
-from kilix_bonsai import catalog, pixel, screen, text, widgets  # noqa: E402
+from kilix_bonsai import catalog, pixel, provision, screen, store, text, widgets  # noqa: E402
 from kilix_bonsai.runtime import asr                             # noqa: E402
 
 TITLE = "Kilix Bonsai Speech"
@@ -409,6 +409,8 @@ def main(argv: list[str] | None = None) -> int:
         with open(path, "w", encoding="utf-8") as target:
             target.write(screen.render_to_text(render, state) + "\n")
         return 0
+    if store.state(model).state != store.PRESENT:
+        provision.ensure_downloaded(model)
     try:
         status = pixel.run(
             argv, PixelRenderer, state, handle, tick_ms=200,

@@ -14,7 +14,9 @@ does badly and a plain terminal does perfectly.
 from __future__ import annotations
 
 import curses
+import json
 import os
+import shutil
 import subprocess
 import sys
 from contextlib import contextmanager
@@ -43,6 +45,111 @@ def deps_argv(model: Model, *, apt: bool = False) -> list[str]:
     if apt:
         argv.append("--apt")
     return argv
+
+
+def first_use_allowed() -> bool:
+    """A terminal can answer a licence. ``KILIX_MODEL_AUTO_INSTALL=0`` refuses."""
+    value = os.environ.get("KILIX_MODEL_AUTO_INSTALL")
+    if value is not None and value.strip().casefold() in {"0", "no", "false", "off"}:
+        return False
+    try:
+        return sys.stdin.isatty() and sys.stdout.isatty()
+    except (AttributeError, OSError, ValueError):
+        return False
+
+
+def _kilix() -> str | None:
+    home = os.environ.get("KILIX_HOME")
+    if home:
+        candidate = os.path.join(home, "kilix")
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    return shutil.which("kilix")
+
+
+def catalog_asset(model: Model, variant: Variant | None = None) -> str:
+    """The content-catalog id whose licence screen covers this weight set.
+
+    A speech model names that id in ``licence_gate``. The image model publishes
+    one catalog id per variant. Every other model publishes its own id. This
+    does not invent a gate the catalog does not have.
+    """
+    chosen = variant or model.default_variant
+    if model.licence_gate:
+        return model.licence_gate
+    if model.id == "bonsai-image-4b":
+        return f"{model.id}-{chosen.id}"
+    return model.id
+
+
+def _verified_asset_dir(kilix: str, asset: str) -> str | None:
+    """Return the verified content directory, or None when verify is unusable.
+
+    A non-object, a mismatched id, a relative root, or a symlink is not a
+    source. The caller then pulls without ``--from`` rather than crashing.
+    """
+    try:
+        completed = subprocess.run(
+            [kilix, "models", "verify", asset],
+            check=False, capture_output=True, text=True)
+    except OSError:
+        return None
+    if completed.returncode != 0:
+        return None
+    try:
+        report = json.loads(completed.stdout)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(report, dict) or report.get("verified") != asset:
+        return None
+    root = report.get("root")
+    if not isinstance(root, str) or not os.path.isabs(root):
+        return None
+    directory = os.path.join(root, "assets", asset)
+    if os.path.islink(directory) or not os.path.isdir(directory):
+        return None
+    return directory
+
+
+def ensure_downloaded(model: Model, variant: Variant | None = None) -> int | None:
+    """Install a missing weight set on first use. None means nothing was started.
+
+    ``kilix models ensure`` shows the licence and waits for an answer. It does
+    not answer. A decline does not pull. ``pull.sh`` still refuses a gated
+    model when no receipt covers it, and adopts a verified local copy with
+    ``--from`` instead of downloading the same bytes again.
+    """
+    from . import store
+    chosen = variant or model.default_variant
+    if store.state(model, chosen).state == store.PRESENT:
+        return None
+    if not first_use_allowed():
+        return None
+    asset = catalog_asset(model, chosen)
+    kilix = _kilix()
+    if kilix is None:
+        print(f"{model.title}: run kilix models install {asset}", file=sys.stderr)
+        return 1
+    print(f"First use of {model.title}: its licence is shown before "
+          "anything is downloaded.", flush=True)
+    status = subprocess.call([kilix, "models", "ensure", asset])
+    if status != 0:
+        return status
+    source = _verified_asset_dir(kilix, asset)
+    selected = None if chosen.default else chosen
+    return run(pull_argv(model, selected, source=source))
+
+
+def ensure_deps(model: Model) -> int | None:
+    """Install a model's Python dependencies on first use. None if present."""
+    from .paths import venv_dir
+    python = os.path.join(venv_dir(model.id), "bin", "python")
+    if os.path.isfile(python) and os.access(python, os.X_OK):
+        return None
+    if not first_use_allowed():
+        return None
+    print(f"Installing dependencies for {model.title}...", flush=True)
+    return run(deps_argv(model))
 
 
 def run(argv: Sequence[str], *, cwd: str | None = None) -> int:

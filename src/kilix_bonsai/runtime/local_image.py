@@ -50,6 +50,65 @@ def check(variant='ternary') -> None:
         raise RuntimeError('local images require NVIDIA compute capability 7.0 or newer')
 
 
+def require_gpu_memory(torch) -> int:
+    """Refuse before any model loads when other jobs hold the GPU; return its total."""
+    free, total = torch.cuda.mem_get_info()
+    if free < 4500 * 1024**2:
+        raise RuntimeError(f'GPU busy: {free // 1024**2} MiB free; local images need at least 4500 MiB. Retry after other GPU jobs finish.')
+    return total
+
+
+def enlarge(args: argparse.Namespace) -> None:
+    """bonsai-enlarge: image-to-image enlargement of a thumbnail or a detail."""
+    from . import enlarge as plan
+    from PIL import Image
+    source = Path(args.input)
+    if not source.is_file():
+        raise ValueError(f'no input image at {source}')
+    crop = plan.parse_crop(args.crop) if args.crop else None
+    background = plan.parse_colour(args.background)
+    with Image.open(source) as opened:
+        opened.load()
+        image = opened.copy()
+    box = plan.check_crop(crop, image.size)
+    size = plan.target_size(box[2:], scale=args.scale,
+                            size=plan.parse_size(args.size) if args.size else None)
+    start = plan.schedule_start(args.steps, args.strength)
+    prompt = args.prompt or plan.DEFAULT_PROMPT
+    if not prompt.strip():
+        raise ValueError('a prompt is required')
+    variant = getattr(args, 'variant', 'ternary')
+    baseline = plan.prepare(image, box, size, background)
+    output = Path(args.output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    baseline_path = None
+    if args.baseline:
+        baseline_path = Path(args.baseline)
+        baseline_path.parent.mkdir(parents=True, exist_ok=True)
+        baseline.save(baseline_path, format='PNG')
+    check(variant)
+    import torch
+    total = require_gpu_memory(torch)
+    from backend_gpu import pipeline_gpu
+    from . import enlarge_forward
+    seed = args.seed if args.seed is not None else secrets.randbelow(2**31)
+    started = time.monotonic()
+    with model_view(variant) as root:
+        pipe = load_pipeline(root, total, variant, pipeline_gpu, torch)
+        print(f'Enlarging locally: {box[2]}x{box[3]} -> {size[0]}x{size[1]}, '
+              f'{args.steps - start} of {args.steps} steps, seed {seed}…', flush=True)
+        result = enlarge_forward.img2img_forward(
+            pipe, baseline, prompt, num_steps=args.steps, start=start, seed=seed)
+    result.save(output, format='PNG')
+    plan.Record(source=str(source), crop=list(box), width=size[0], height=size[1],
+                prompt=prompt, strength=args.strength, steps=args.steps,
+                steps_run=args.steps - start, seed=seed, variant=variant,
+                background=args.background.lstrip('#'),
+                baseline=str(baseline_path) if baseline_path else None,
+                seconds=round(time.monotonic() - started, 1)).write(output)
+    print(f'result: enlarged {output}', flush=True)
+
+
 def generate(args: argparse.Namespace) -> None:
     if args.input_image:
         raise ValueError('reference images are not supported by the installed local pipeline; clear the reference field')
@@ -64,9 +123,7 @@ def generate(args: argparse.Namespace) -> None:
     variant = getattr(args,'variant','ternary')
     check(variant)
     import torch
-    free, total = torch.cuda.mem_get_info()
-    if free < 4500 * 1024**2:
-        raise RuntimeError(f'GPU busy: {free // 1024**2} MiB free; local images need at least 4500 MiB. Retry after other GPU jobs finish.')
+    total = require_gpu_memory(torch)
     from backend_gpu import pipeline_gpu
     with model_view(variant) as root:
         data = generate_verified(args,root,width,height,total,variant,pipeline_gpu,torch)
@@ -76,7 +133,8 @@ def generate(args: argparse.Namespace) -> None:
     print(f'result: generated {output}', flush=True)
 
 
-def generate_verified(args,root,width,height,total,variant,pipeline_gpu,torch):
+def load_pipeline(root,total,variant,pipeline_gpu,torch):
+    """Prewarm the pinned GPU pipeline from a verified model view."""
     pipe = pipeline_gpu.GpuPipeline(backend='bonsai-'+variant+'-gemlite',
                        device='cuda:0',
                        binary_transformer_path=root / 'transformer-gemlite-int1',
@@ -110,6 +168,11 @@ def generate_verified(args,root,width,height,total,variant,pipeline_gpu,torch):
 
         pipe._vae.decode = decode_cpu
         torch.cuda.empty_cache()
+    return pipe
+
+
+def generate_verified(args,root,width,height,total,variant,pipeline_gpu,torch):
+    pipe = load_pipeline(root,total,variant,pipeline_gpu,torch)
     cold_allocated = torch.cuda.max_memory_allocated()
     cold_reserved = torch.cuda.max_memory_reserved()
     seed = args.seed if args.seed is not None else secrets.randbelow(2**31)
@@ -145,11 +208,27 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument('--input-image')
     run.add_argument('--variant',choices=('ternary','binary'),default='ternary')
     run.add_argument('--measurement',help='write development process/allocator memory observations')
+    big = commands.add_parser('enlarge', help='enlarge a thumbnail or a detail (bonsai-enlarge)')
+    big.add_argument('input', help='source image (PNG, JPEG, ...)')
+    big.add_argument('--output', required=True)
+    big.add_argument('--crop', help='detail to enlarge, X,Y,W,H in source pixels')
+    big.add_argument('--scale', type=float, help='output = region x SCALE, snapped to 32')
+    big.add_argument('--size', help='exact output WxH, multiples of 32')
+    big.add_argument('-p', '--prompt', help='what the picture is; a generic sharpening prompt by default')
+    big.add_argument('--strength', type=float, default=0.5,
+                     help='0..1: how far the model may redraw (default 0.5)')
+    big.add_argument('--steps', type=int, default=8, help='schedule length (default 8)')
+    big.add_argument('--seed', type=int)
+    big.add_argument('--background', default='ffffff', help='colour under transparency')
+    big.add_argument('--baseline', help='also write the plain Lanczos enlargement here')
+    big.add_argument('--variant', choices=('ternary', 'binary'), default='ternary')
     args = parser.parse_args(argv)
     try:
         if args.command == 'doctor':
             check(args.variant)
             print('result: ready: local CUDA image runtime')
+        elif args.command == 'enlarge':
+            enlarge(args)
         else:
             generate(args)
         return 0

@@ -37,10 +37,11 @@ cannot provide it. `--screenshot` always captures the text rendering.
 | `kilix-bonsai` | all of them | The launcher and the model store |
 | `kilix-bonsai-chat` | the 1-bit text models | On a GPU, streams one vendor process per turn; on CPU, opens bonsai-cpu's resident, persistent chat |
 | `kilix-bonsai-image` | Bonsai Image 4B | Prompt, reference image, seed, size and steps; a gallery that records what produced each result and can feed one back in |
+| `kilix-bonsai-enlarge` | Bonsai Image 4B | bonsai-enlarge: enlarge a thumbnail or a detail of an image (`--crop`) by partly redrawing a Lanczos enlargement; no arguments opens its composer, with arguments it is a command line. See [Enlarging](#enlarging) |
 | `kilix-bonsai-speech` | VibeVoice ASR BitNet | Record or point at a WAV; transcript grows chunk by chunk; copy or write it out |
 | `bonsai-cpu` | Bonsai 8B and 27B | Pinned upstream llama.cpp, CPU-only build, resident chat, one-shot inference, serving, and benchmarks |
 
-The launcher and all three task interfaces use that text shell by default.
+The launcher and all four task interfaces use that text shell by default.
 Chat stays in it while it streams, as do image generation and transcription.
 The optional pixel rendering remains available with `--graphics`; every text
 screen renders to plain text for tests.
@@ -74,7 +75,7 @@ receipt-backed Kilix Content store. See
 ### Install
 
 ```sh
-./install.sh                       # all five commands into ~/.local/bin
+./install.sh                       # all six commands into ~/.local/bin
 KILIX_BONSAI_PREFIX=/usr/local ./install.sh
 ./install.sh --uninstall           # remove this checkout's unchanged launchers
 ```
@@ -109,6 +110,7 @@ kilix-bonsai deps MODEL [--apt]    # dependencies
 kilix-bonsai pull MODEL [--variant V] [--from DIR] [--force] [--dry-run]
 kilix-bonsai verify MODEL [--variant V]
 kilix-bonsai path MODEL [--variant V]
+kilix-bonsai enlarge [ARGS...]     # bonsai-enlarge; no ARGS opens its composer
 ```
 
 ## How it works
@@ -127,6 +129,7 @@ kilix-bonsai (launcher, store, CLI)
    `-- opens the interface MODEL.json names:
          kilix-bonsai-chat   -> GPU vendor launchers, or bonsai-cpu (llama.cpp, CPU)
          kilix-bonsai-image  -> local image runtime (isolated venv) or a remote
+         kilix-bonsai-enlarge -> the same local image runtime, image to image
          kilix-bonsai-speech -> VibeASR asr_infer
 ```
 
@@ -134,6 +137,36 @@ Nothing here reimplements inference. Chat probes a local GPU, then a remote
 one, then hands over to `bonsai-cpu chat`. Environment variables, the runtime
 choices and what was learned running them are in
 [docs/configuration-and-runtimes.md](docs/configuration-and-runtimes.md).
+
+### Enlarging
+
+`kilix-bonsai-enlarge` (bonsai-enlarge) makes a small picture large: an
+emoji, a symbol, a thumbnail, or a detail cut from a bigger image.
+
+```sh
+kilix-bonsai-enlarge                      # the composer (TUI); --graphics for pixels
+kilix bonsai enlarge emoji.png --output big.png
+kilix-bonsai-enlarge photo.jpg --crop 120,40,64,64 --scale 8 --output detail.png
+kilix-bonsai-enlarge icon.png --strength 0.35 --baseline lanczos.png --output big.png
+```
+
+The pinned Prism forward is text to image only, so `runtime/enlarge_forward.py`
+adds image to image in the flow-matching way (SDEdit). The source is cut, laid
+on `--background` where it is transparent, and resampled with Lanczos to the
+output size (long side 512 by default, multiples of 32). The model's VAE
+encodes that picture, it is moved part of the way back to noise, and only the
+last `round(steps x strength)` of `--steps` (8) steps run. Strength 0.5 is the
+default: lower keeps more of the source, and 0.75 already redraws it.
+`--baseline` also writes the plain Lanczos result, and every output gets
+`OUTPUT.json` recording what produced it.
+
+It runs through the same guarded local CLI as `kilix-bonsai-image`
+(`tools/bonsai-image/main.py enlarge ...`): consent receipts, sealed model
+copies, network off, and the 4.5 GiB free-GPU check before anything loads.
+The composer writes `~/kilix-bonsai-images/enlarge/enlarge-NNN.png` with the
+Lanczos baseline beside it. Kilix 95 lists it as Bonsai Image Enlarge once
+Bonsai Image weights are present. Only `--variant ternary` has been run on real
+hardware.
 
 ## Tests
 
